@@ -53,6 +53,11 @@ def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,l
 	logger.info('Trimming the reads')
 	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"_paired1.fq",out+"_paired2.fq",out+"_unpaired1.fq",out+"_unpaired2.fq","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])
 	
+def khmer(read1,read2,kmer,logger):
+	#function to normalize reads based on given kmer length
+	logger.info("Normalizing the given reads...")
+	call(["normalize-by-median.py","-k",kmer,read1,read2])
+
 def Kallisto(read1,read2,file,kmer,boost,thread,logger):
 	#Function to run Kallisto
 	logger.info('Starting kallisto Indexing step...')
@@ -189,6 +194,7 @@ def main():
 	
 
 	parser.add_argument("--skippre",dest="skippre",help="Use this option if you want to skip pre processing steps [Default=False]",action="store_const",const="True",default="False")
+	parser.add_argument("--normalize", dest="norm",help="Use this option if you want to normalize the input data [Default=False]", action="store_const",const="True",default="False")
 	parser.add_argument('-v','--version', action='version', version='%(prog)s 1.0')
 	args = parser.parse_args()
 	post = args.post
@@ -270,6 +276,11 @@ def main():
 		read2 = args.out+"_paired2.fq"
 	else:
 		logger.info("User opted to skip Pre Processing step")
+
+	if (args.norm=="False"):
+		khmer(read1,read2,args.fastqck,logger)
+		read1 = read1+".keep"
+		read2 = read2+".keep"
 
 	#Running RNA-seq according to what the user selected:
 	log = logging.getLogger('RNA Seq')
