@@ -277,7 +277,7 @@ def main():
 	else:
 		logger.info("User opted to skip Pre Processing step")
 
-	if (args.norm=="False"):
+	if (args.norm=="True"):
 		khmer(read1,read2,args.fastqck,logger)
 		read1 = read1+".keep"
 		read2 = read2+".keep"
