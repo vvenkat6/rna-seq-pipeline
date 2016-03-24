@@ -43,10 +43,61 @@ from subprocess import call
 #Global Variable:
 post = "False"
 
-def Quality_Assessment(read,kmer,logger,out):
+def Quality_Assessment(read,kmer,logger,out,type):
 	#Function to run Fastqc
 	logger.info('Running FastQC')
-	call(['fastqc','--kmers',str(kmer),'--extract',read,'--outdir',out+"/FastqcMetrics/"])	
+	call(['fastqc','--kmers',str(kmer),'--extract',read,'--outdir',out+"/"+type+"FastqcMetrics/"])  
+	
+	#Parsing FastQC Results
+	print "Basic Statistics:"
+	print "--------------------------------"
+	with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/fastqc_data.txt",'r') as f:
+		for line in f:
+			lines = line.strip().split("\t")
+			if "Sequence length" in line:
+				print lines[0] +"\t" + lines[1]
+			elif "%GC" in line:
+				print lines[0] +"\t" + lines[1]
+			elif "Sequences flagged as poor quality" in line:
+				print lines[0] +"\t" + lines[1]
+			elif "Total Sequences" in line:
+				print lines[0] +"\t" + lines[1]
+			elif ">>END_MODULE" in line:
+				break
+
+	print "\nOther Statistics Summary:"
+	print "--------------------------------"
+	with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/summary.txt",'r') as f:	 	
+		print "Metrics \t\t Result"
+		for line in f:
+			line = line.split('\t')
+			print line[1]+"\t"+line[0]
+			if "Per base sequence content" in line:
+				if line[0] == "FAIL":
+					print "\t\t\tThis could've failed due to fragmentation bias in the first 13bp. Checking..."
+					with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/fastqc_data.txt",'r') as f:
+						for i, line in enumerate(f, 1):
+							if "Per base sequence content" in line:
+								start = i
+							elif "Per sequence GC content" in line:
+								end = i
+
+					with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/fastqc_data.txt",'r') as f:
+						lines = f.readlines()
+					i = start+1
+					bp = 1
+					check = 1
+					while i < end-2:
+						if bp > 13:
+							values = lines[i].strip().split('\t')
+							if abs(float(values[1]) - float(values[4])) > 20 or abs(float(values[3])-float(values[4])) > 20:
+								print "\t\tThe error isn't just due to fragment bias. Please check the reads to remove possible adapter contamination"
+								check = 0
+								break
+						i+=1
+						bp+=1
+					if check == 1:
+						print "\t\t Only fragment bias in the first 13bp found."
 
 def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,logger):
 	#Function to trim reads using Trimmomatic
@@ -221,6 +272,7 @@ def main():
         logger.addHandler(stream)
 
 	#Check the existance of files
+	'''
 	if(args.read1 == 'Na' or not os.path.exists(args.read1)):
 		logger.error("The read 1 file is not readable")
 		parser.print_help()
@@ -278,7 +330,7 @@ def main():
                                 logger.error("Mask file not readable")
                                 sys.exit()
 
-
+	'''
 	read1 = args.read1
 	read2 = args.read2
 	
@@ -291,13 +343,17 @@ def main():
         	log.setLevel(logging.DEBUG)
         	log.addHandler(stream)
 		
-		call(['mkdir',args.out+'/FastqcMetrics'])
-		Quality_Assessment(args.read1,args.fastqck,log,args.out)
-		Quality_Assessment(args.read2,args.fastqck,log,args.out)
+		call(['mkdir',args.out+'/preFastqcMetrics'])
+		Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
+		Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
 		TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,logger)
 		read1 = args.out+"/"+args.out+"_paired1.fq"
 		read2 = args.out+"/"+args.out+"_paired2.fq"
+	
+		call(['mkdir',args.out+'/postFastqcMetrics'])
+                Quality_Assessment(args.read1,args.fastqck,log,args.out,"post")
+                Quality_Assessment(args.read2,args.fastqck,log,args.out,"post)
 	else:
 		logger.info("User opted to skip Pre Processing step")
 
@@ -305,7 +361,7 @@ def main():
 		khmer(read1,read2,args.fastqck,logger)
 		read1 = read1+".keep"
 		read2 = read2+".keep"
-
+	'''
 	#Running RNA-seq according to what the user selected:
 	log = logging.getLogger('RNA Seq')
 	log.setLevel(logging.DEBUG)
@@ -336,6 +392,6 @@ def main():
 		else:
 			print args.bowindex
 			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask)
-
+	'''
 if __name__ == "__main__":
 	main()
