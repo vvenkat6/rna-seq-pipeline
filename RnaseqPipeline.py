@@ -199,13 +199,19 @@ def PostMapping(file,logger,out):
 
 def PostQuality(file,out,logger):
 	out = out+"/"+out+"_"
-	#Function to reimplement Read_quality.py from RSEQC package written by Liguo Wang
+	#Function to reimplement Read_quality.py and read_duplication.py from RSeQC-2.6.3 package written by Liguo Wang
 	logger.info("Plotting post quality graphs...")
 	if (os.path.exists(file)):
                 obj = SAM.ParseBAM(file)
                 obj.readsQual_boxplot(outfile=out, q_cut = 30, shrink = 1000)
                 try:
                         subprocess.call("Rscript " + out+ ".qual.r",shell=True)
+                except:
+                        pass
+
+		obj.readDupRate(outfile=out,up_bound=500, q_cut = 30)
+		try:
+                        subprocess.call("Rscript " + out +  ".DupRate_plot.r", shell=True)
                 except:
                         pass
         else:
@@ -272,7 +278,6 @@ def main():
         logger.addHandler(stream)
 
 	#Check the existance of files
-	'''
 	if(args.read1 == 'Na' or not os.path.exists(args.read1)):
 		logger.error("The read 1 file is not readable")
 		parser.print_help()
@@ -330,7 +335,6 @@ def main():
                                 logger.error("Mask file not readable")
                                 sys.exit()
 
-	'''
 	read1 = args.read1
 	read2 = args.read2
 	
@@ -361,7 +365,7 @@ def main():
 		khmer(read1,read2,args.fastqck,logger)
 		read1 = read1+".keep"
 		read2 = read2+".keep"
-	'''
+
 	#Running RNA-seq according to what the user selected:
 	log = logging.getLogger('RNA Seq')
 	log.setLevel(logging.DEBUG)
@@ -392,6 +396,6 @@ def main():
 		else:
 			print args.bowindex
 			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask)
-	'''
+
 if __name__ == "__main__":
 	main()
