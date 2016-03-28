@@ -8,15 +8,23 @@ Dependencies:
 	For pre-processing:
 		>FastQC
 		>Trimmomatic
+
 	For fast assmebly:
 		>Kallisto
+
 	For general assembly:
 		>Bwa
+		>samtools sort
 		>eXpress
+
 	For Novel Transcript Detection:
 		>Bowtie2
 		>TopHat
 		>Cufflinks
+
+	For report generation:
+		>pylatex
+		>pdflatex (or maclatex)
 '''
 
 import sys,os
@@ -31,6 +39,8 @@ import math
 import sets
 from time import strftime
 import subprocess
+from subprocess import call
+import numpy as np
 
 from bx.bitset import *
 from bx.bitset_builders import *
@@ -38,7 +48,9 @@ from bx.intervals import *
 
 from qcmodule import SAM
 
-from subprocess import call
+from pylatex import Document, Section, Subsection, Tabular, Math, TikZ, Axis, \
+    Plot, Figure, Package, Matrix, Command
+from pylatex.utils import italic, NoEscape
 
 #Global Variable:
 post = "False"
@@ -46,35 +58,37 @@ post = "False"
 def Quality_Assessment(read,kmer,logger,out,type):
 	#Function to run Fastqc
 	logger.info('Running FastQC')
-	call(['fastqc','--kmers',str(kmer),'--extract',read,'--outdir',out+"/"+type+"FastqcMetrics/"])  
+	call(['fastqc','--kmers',str(kmer),'--extract',read,'--outdir',out+"/"+type+"FastqcMetrics/"])
+	output = out+"/"+read.split('/')[-1].split('.')[0]+"_"+type+"process_Summary.txt"
+	fout = open(output,'w')  
 	
 	#Parsing FastQC Results
-	print "Basic Statistics:"
-	print "--------------------------------"
+	fout.write("Basic Statistics:\n")
+	fout.write("--------------------------------\n\n")
 	with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/fastqc_data.txt",'r') as f:
 		for line in f:
 			lines = line.strip().split("\t")
 			if "Sequence length" in line:
-				print lines[0] +"\t" + lines[1]
+				fout.write(lines[0] +"\t" + lines[1]+"\n")
 			elif "%GC" in line:
-				print lines[0] +"\t" + lines[1]
+				fout.write(lines[0] +"\t" + lines[1]+"\n")
 			elif "Sequences flagged as poor quality" in line:
-				print lines[0] +"\t" + lines[1]
+				fout.write(lines[0] +"\t" + lines[1]+"\n")
 			elif "Total Sequences" in line:
-				print lines[0] +"\t" + lines[1]
+				fout.write(lines[0] +"\t" + lines[1]+"\n")
 			elif ">>END_MODULE" in line:
 				break
 
-	print "\nOther Statistics Summary:"
-	print "--------------------------------"
+	fout.write("\nOther Statistics Summary:\n")
+	fout.write("--------------------------------\n")
 	with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/summary.txt",'r') as f:	 	
-		print "Metrics \t\t Result"
+		fout.write("Metrics \t\t Result")
 		for line in f:
 			line = line.split('\t')
-			print line[1]+"\t"+line[0]
+			fout.write(line[1]+"\t"+line[0]+"\n")
 			if "Per base sequence content" in line:
 				if line[0] == "FAIL":
-					print "\t\t\tThis could've failed due to fragmentation bias in the first 13bp. Checking..."
+					fout.write("\t\t\tThis could've failed due to fragmentation bias in the first 13bp. Checking...\n")
 					with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/fastqc_data.txt",'r') as f:
 						for i, line in enumerate(f, 1):
 							if "Per base sequence content" in line:
@@ -91,13 +105,14 @@ def Quality_Assessment(read,kmer,logger,out,type):
 						if bp > 13:
 							values = lines[i].strip().split('\t')
 							if abs(float(values[1]) - float(values[4])) > 20 or abs(float(values[3])-float(values[4])) > 20:
-								print "\t\tThe error isn't just due to fragment bias. Please check the reads to remove possible adapter contamination"
+								fout.write("\t\tThe error isn't just due to fragment bias. Please check the reads to remove possible adapter contamination\n")
 								check = 0
 								break
 						i+=1
 						bp+=1
 					if check == 1:
-						print "\t\t Only fragment bias in the first 13bp found."
+						fout.write("\t\t Only fragment bias in the first 13bp found.")
+	fout.close()
 
 def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,logger):
 	#Function to trim reads using Trimmomatic
@@ -128,7 +143,7 @@ def Bwa(read1,read2,file,algo,extra,logger,out):
 	cmd = "bwa "+algo+" "+file+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
 	os.system(cmd)
 	logger.info("Sorting sam file...")
-	cmd = "sort -k 1 "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
+	cmd = "samtools sort -n "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
 	os.system(cmd)
 
 	cmd = "echo 'Post Mapping Metrics' > "+out+"/PostMappingMetrics.txt"
@@ -218,6 +233,45 @@ def PostQuality(file,out,logger):
                 logger.error("Failed to plot graphs")
                 sys.exit(0)	
 
+def GeneratePDF(read1,read2,out,logger):
+	#Function to generate pdf report summary of all the stats
+	logger.info("Generating PDF report of summary data")
+	doc = Document()
+
+	doc.preamble.append(Command('title', 'Combined Summary Report'))
+	doc.append(NoEscape(r'\maketitle'))
+
+	with doc.create(Section('Pre-Processing Data')):
+        	doc.append(italic('italic text. '))
+
+        with doc.create(Subsection('Base Quality Graph')):
+		with doc.create(Figure(position='h!')) as pic:
+                	pic.add_image(out+"/FastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                	pic.add_caption(read1.split('/')[-1].split('.')[0])
+
+		with doc.create(Figure(position='h')) as pic2:
+                        pic2.add_image(out+"/FastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                        pic2.add_caption(read2.split('/')[-1].split('.')[0])
+
+	with doc.create(Subsection('Data Summary')):
+		doc.append('output summary')
+
+        with doc.create(Section('Post Pre-Processing Data')):
+		doc.append(italic('italic text. '))
+        with doc.create(Subsection('Per Base Sequence Graph')):
+                doc.append(Math(data=['2*3', '=', 9]))
+        with doc.create(Subsection('Data Summary')):
+                doc.append('output summary')
+
+	if os.path.exists(out+"/PostMappingMetrics.txt"):
+		with doc.create(Section('Post Mapping Data')):
+			with open(out+"/PostMappingMetrics.txt") as f:
+				for line in f:
+					doc.append(line)
+
+	doc.generate_pdf(out+'/Summary_Report', clean=False)
+	
+
 def main():
 	global post
 	parser = argparse.ArgumentParser(prog='rnaseq',description="Program to help run RNA-seq Analysis")
@@ -260,8 +314,7 @@ def main():
 	novel.add_argument('-m','--mask-file',dest="mask",help="Ignore all alignment within transcripts in this file",metavar="<path to file>",default="Na")
 
 	post = parser.add_argument_group("Post Mapping Metrics Graph")
-	post.add_argument('-p','--post',dest="post",help="Use this option if you want post mapping metrics graph [Default=False]", action="store_const",const="True",default="False")
-	
+	post.add_argument('-p','--post',dest="post",help="Use this option if you want post mapping metrics graph [Default=True]", action="store_const",const="True",default="True")
 
 	parser.add_argument("--skippre",dest="skippre",help="Use this option if you want to skip pre processing steps [Default=False]",action="store_const",const="True",default="False")
 	parser.add_argument("--normalize", dest="norm",help="Use this option if you want to normalize the input data [Default=False]", action="store_const",const="True",default="False")
@@ -276,7 +329,7 @@ def main():
         formats = logging.Formatter('[%(asctime)s %(name)s %(levelname)s]: %(message)s')
         stream.setFormatter(formats)
         logger.addHandler(stream)
-
+	
 	#Check the existance of files
 	if(args.read1 == 'Na' or not os.path.exists(args.read1)):
 		logger.error("The read 1 file is not readable")
@@ -334,10 +387,10 @@ def main():
                         if(not os.path.exists(args.mask)):
                                 logger.error("Mask file not readable")
                                 sys.exit()
-
+	
 	read1 = args.read1
 	read2 = args.read2
-	
+		
 	#Creating Directory Structure
 	call(['mkdir',args.out])
 
@@ -347,17 +400,17 @@ def main():
         	log.setLevel(logging.DEBUG)
         	log.addHandler(stream)
 		
-		call(['mkdir',args.out+'/preFastqcMetrics'])
-		Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
-		Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
+		#call(['mkdir',args.out+'/preFastqcMetrics'])
+		#Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
+		#Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
-		TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,logger)
-		read1 = args.out+"/"+args.out+"_paired1.fq"
-		read2 = args.out+"/"+args.out+"_paired2.fq"
+		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,logger)
+		#read1 = args.out+"/"+args.out+"_paired1.fq"
+		#read2 = args.out+"/"+args.out+"_paired2.fq"
 	
 		call(['mkdir',args.out+'/postFastqcMetrics'])
                 Quality_Assessment(args.read1,args.fastqck,log,args.out,"post")
-                Quality_Assessment(args.read2,args.fastqck,log,args.out,"post)
+                Quality_Assessment(args.read2,args.fastqck,log,args.out,"post")
 	else:
 		logger.info("User opted to skip Pre Processing step")
 
@@ -396,6 +449,8 @@ def main():
 		else:
 			print args.bowindex
 			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask)
+	
+	GeneratePDF(read1,read2,args.out,logger)	
 
 if __name__ == "__main__":
 	main()
