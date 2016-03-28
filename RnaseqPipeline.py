@@ -213,7 +213,7 @@ def PostMapping(file,logger,out):
 	logger.info("Post Mapping Metrics can be accessed from "+out+"/PostMappingMetrics.txt")
 
 def PostQuality(file,out,logger):
-	out = out+"/"+out+"_"
+	out = out+"/"+out
 	#Function to reimplement Read_quality.py and read_duplication.py from RSeQC-2.6.3 package written by Liguo Wang
 	logger.info("Plotting post quality graphs...")
 	if (os.path.exists(file)):
@@ -246,28 +246,64 @@ def GeneratePDF(read1,read2,out,logger):
 
         with doc.create(Subsection('Base Quality Graph')):
 		with doc.create(Figure(position='h!')) as pic:
-                	pic.add_image(out+"/FastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                	pic.add_image(out+"/preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
                 	pic.add_caption(read1.split('/')[-1].split('.')[0])
 
 		with doc.create(Figure(position='h')) as pic2:
-                        pic2.add_image(out+"/FastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                        pic2.add_image(out+"/preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
                         pic2.add_caption(read2.split('/')[-1].split('.')[0])
 
 	with doc.create(Subsection('Data Summary')):
-		doc.append('output summary')
+		with doc.create(Section(read1.split('/')[-1].split('.')[0])):
+			with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
+				for line in f:
+					doc.append(line)
 
-        with doc.create(Section('Post Pre-Processing Data')):
-		doc.append(italic('italic text. '))
-        with doc.create(Subsection('Per Base Sequence Graph')):
-                doc.append(Math(data=['2*3', '=', 9]))
+		with doc.create(Section(read2.split('/')[-1].split('.')[0])):
+                        with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
+                                for line in f:
+                                        doc.append(line)
+
+	with doc.create(Section('Post-Processing Data')):
+                doc.append(italic('italic text. '))
+
+        with doc.create(Subsection('Base Quality Graph')):
+                with doc.create(Figure(position='h!')) as pic:
+                        pic.add_image(out+"/postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                        pic.add_caption(read1.split('/')[-1].split('.')[0])
+
+                with doc.create(Figure(position='h')) as pic2:
+                        pic2.add_image(out+"/postFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                        pic2.add_caption(read2.split('/')[-1].split('.')[0])
+
         with doc.create(Subsection('Data Summary')):
-                doc.append('output summary')
+                with doc.create(Section(read1.split('/')[-1].split('.')[0])):
+                        with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
+                                for line in f:
+                                        doc.append(line)
+
+                with doc.create(Section(read2.split('/')[-1].split('.')[0])):
+                        with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
+                                for line in f:
+                                        doc.append(line)
 
 	if os.path.exists(out+"/PostMappingMetrics.txt"):
 		with doc.create(Section('Post Mapping Data')):
+			doc.append(italic('sometext'))
+
+		with doc.create(Subsection('Data Summary"):
 			with open(out+"/PostMappingMetrics.txt") as f:
 				for line in f:
 					doc.append(line)
+
+		with doc.create(Subsection('Visual Summary"):
+			with doc.create(Figure(position='h!')) as pic:
+				pic.add_image(out+"/"+out+".qual.r", width='130px')
+				pic.add_caption("Alignment Quality")
+
+			with doc.create(Figure(position='h')) as pic2:
+				pic2.add_image(out+"/"+out+".DupRate_plot.r", width='130px')
+				pic2.add_caption("Duplication Rate")
 
 	doc.generate_pdf(out+'/Summary_Report', clean=False)
 	
