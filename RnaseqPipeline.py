@@ -453,17 +453,17 @@ def main():
 		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,logger)
 		#read1 = args.out+"/"+args.out+"_paired1.fq"
 		#read2 = args.out+"/"+args.out+"_paired2.fq"
+
+		if (args.norm=="True"):
+                	khmer(read1,read2,args.fastqck,logger)
+                	read1 = read1+".keep"
+                	read2 = read2+".keep"
 	
 		call(['mkdir',args.out+'/postFastqcMetrics'])
                 Quality_Assessment(args.read1,args.fastqck,log,args.out,"post")
                 Quality_Assessment(args.read2,args.fastqck,log,args.out,"post")
 	else:
 		logger.info("User opted to skip Pre Processing step")
-
-	if (args.norm=="True"):
-		khmer(read1,read2,args.fastqck,logger)
-		read1 = read1+".keep"
-		read2 = read2+".keep"
 
 	#Running RNA-seq according to what the user selected:
 	log = logging.getLogger('RNA Seq')
