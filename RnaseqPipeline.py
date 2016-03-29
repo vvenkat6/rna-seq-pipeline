@@ -49,7 +49,7 @@ from bx.intervals import *
 from qcmodule import SAM
 
 from pylatex import Document, Section, Subsection, Tabular, Math, TikZ, Axis, \
-    Plot, Figure, Package, Matrix, Command
+    Plot, Figure, Package, Matrix, Command, Itemize
 from pylatex.utils import italic, NoEscape
 
 #Global Variable:
@@ -63,7 +63,7 @@ def Quality_Assessment(read,kmer,logger,out,type):
 	fout = open(output,'w')  
 	
 	#Parsing FastQC Results
-	fout.write("Basic Statistics:\n")
+	fout.write("\nBasic Statistics:\n")
 	fout.write("--------------------------------\n\n")
 	with open(out+"/"+type+"FastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/fastqc_data.txt",'r') as f:
 		for line in f:
@@ -133,17 +133,17 @@ def Kallisto(read1,read2,file,kmer,boost,thread,logger,out):
 	logger.info("Kallisto Indexing over. Starting Quantification...")
 	call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i","kallisto_indexfile.idx","-o",out+"/Kallisto_Output",read1,read2])
 
-def Bwa(read1,read2,file,algo,extra,logger,out):
+def Bwa(read1,read2,file,algo,extra,logger,out,thread):
 	global post
 	#Function to run bwa
 	logger.info("Starting bwa indexing step...")
 	call(["bwa","index",file])
 
 	logger.info("Bwa Indexing over. Starting Quantification...")
-	cmd = "bwa "+algo+" "+file+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
+	cmd = "bwa "+algo+" "+"-t "+thread+" "+file+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
 	os.system(cmd)
 	logger.info("Sorting sam file...")
-	cmd = "samtools sort -n "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
+	cmd = "samtools sort -n --threads"+thread+" "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
 	os.system(cmd)
 
 	cmd = "echo 'Post Mapping Metrics' > "+out+"/PostMappingMetrics.txt"
@@ -237,74 +237,84 @@ def GeneratePDF(read1,read2,out,logger):
 	#Function to generate pdf report summary of all the stats
 	logger.info("Generating PDF report of summary data")
 	doc = Document()
+	doc.packages.append(Package('geometry', options=['tmargin=1cm','lmargin=1cm','rmargin=1cm']))
 
 	doc.preamble.append(Command('title', 'Combined Summary Report'))
 	doc.append(NoEscape(r'\maketitle'))
 
 	with doc.create(Section('Pre-Processing Data')):
-        	doc.append(italic('italic text. '))
+		doc.append("")
 
         with doc.create(Subsection('Base Quality Graph')):
 		with doc.create(Figure(position='h!')) as pic:
-                	pic.add_image(out+"/preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                	pic.add_image("preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
                 	pic.add_caption(read1.split('/')[-1].split('.')[0])
-
+		
 		with doc.create(Figure(position='h')) as pic2:
-                        pic2.add_image(out+"/preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
+                        pic2.add_image("preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
                         pic2.add_caption(read2.split('/')[-1].split('.')[0])
-
+	
 	with doc.create(Subsection('Data Summary')):
-		with doc.create(Section(read1.split('/')[-1].split('.')[0])):
+		with doc.create(Itemize()) as itemize:
+			itemize.add_item(read1.split('/')[-1].split('.')[0])
 			with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
 				for line in f:
 					doc.append(line)
 
-		with doc.create(Section(read2.split('/')[-1].split('.')[0])):
+			itemize.add_item(read2.split('/')[-1].split('.')[0])
                         with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
                                 for line in f:
                                         doc.append(line)
-
+	
 	with doc.create(Section('Post-Processing Data')):
-                doc.append(italic('italic text. '))
+                doc.append("")
 
         with doc.create(Subsection('Base Quality Graph')):
-                with doc.create(Figure(position='h!')) as pic:
-                        pic.add_image(out+"/postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
-                        pic.add_caption(read1.split('/')[-1].split('.')[0])
+                with doc.create(Figure(position='h!')) as pic3:
+                        pic3.add_image("postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                        pic3.add_caption(read1.split('/')[-1].split('.')[0])
 
-                with doc.create(Figure(position='h')) as pic2:
-                        pic2.add_image(out+"/postFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='130px')
-                        pic2.add_caption(read2.split('/')[-1].split('.')[0])
+                with doc.create(Figure(position='h')) as pic4:
+                        pic4.add_image("postFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                        pic4.add_caption(read2.split('/')[-1].split('.')[0])
 
         with doc.create(Subsection('Data Summary')):
-                with doc.create(Section(read1.split('/')[-1].split('.')[0])):
+		with doc.create(Itemize()) as itemize:
+                	itemize.add_item(read1.split('/')[-1].split('.')[0])
                         with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
                                 for line in f:
                                         doc.append(line)
 
-                with doc.create(Section(read2.split('/')[-1].split('.')[0])):
+                	itemize.add_item(read2.split('/')[-1].split('.')[0])
                         with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
                                 for line in f:
                                         doc.append(line)
 
 	if os.path.exists(out+"/PostMappingMetrics.txt"):
 		with doc.create(Section('Post Mapping Data')):
-			doc.append(italic('sometext'))
+			doc.append("")
 
-		with doc.create(Subsection('Data Summary"):
+		with doc.create(Subsection('Data Summary')):
 			with open(out+"/PostMappingMetrics.txt") as f:
 				for line in f:
 					doc.append(line)
 
-		with doc.create(Subsection('Visual Summary"):
+		cmd = "sips -s format png "+out+"/"+out+".qual.heatmap.pdf --out "+out+"/"+out+".qual.heatmap.png"
+		os.system(cmd)
+		
+		cmd = "sips -s format png "+out+"/"+out+".DupRate_plot.pdf --out "+out+"/"+out+".Duprate_plot.png"
+                print cmd
+		os.system(cmd)
+
+		with doc.create(Subsection('Visual Summary')):
 			with doc.create(Figure(position='h!')) as pic:
-				pic.add_image(out+"/"+out+".qual.r", width='130px')
+				pic.add_image(out+".qual.heatmap.png", width='160px')
 				pic.add_caption("Alignment Quality")
 
 			with doc.create(Figure(position='h')) as pic2:
-				pic2.add_image(out+"/"+out+".DupRate_plot.r", width='130px')
+				pic2.add_image(out+".DupRate_plot.png", width='160px')
 				pic2.add_caption("Duplication Rate")
-
+		
 	doc.generate_pdf(out+'/Summary_Report', clean=False)
 	
 
@@ -365,7 +375,7 @@ def main():
         formats = logging.Formatter('[%(asctime)s %(name)s %(levelname)s]: %(message)s')
         stream.setFormatter(formats)
         logger.addHandler(stream)
-	
+	'''	
 	#Check the existance of files
 	if(args.read1 == 'Na' or not os.path.exists(args.read1)):
 		logger.error("The read 1 file is not readable")
@@ -423,10 +433,10 @@ def main():
                         if(not os.path.exists(args.mask)):
                                 logger.error("Mask file not readable")
                                 sys.exit()
-	
+	'''
 	read1 = args.read1
 	read2 = args.read2
-		
+	'''	
 	#Creating Directory Structure
 	call(['mkdir',args.out])
 
@@ -469,7 +479,7 @@ def main():
 		extra = ""
 		if args.strand != "None":
 			extra = "--"+args.strand
-		Bwa(read1,read2,args.bindex,args.algo,extra,logger,args.out)
+		Bwa(read1,read2,args.bindex,args.algo,extra,logger,args.out,args.thread)
 	else:
 		log.info("User opted to perform analysis to detect novel transcripts, Prepping for Tophat, Cufflinks and eXpress...")	
 		libtype = ""
@@ -485,7 +495,7 @@ def main():
 		else:
 			print args.bowindex
 			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask)
-	
+	'''
 	GeneratePDF(read1,read2,args.out,logger)	
 
 if __name__ == "__main__":
