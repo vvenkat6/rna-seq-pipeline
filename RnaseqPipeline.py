@@ -45,8 +45,15 @@ import numpy as np
 from bx.bitset import *
 from bx.bitset_builders import *
 from bx.intervals import *
+from bx.binned_array import BinnedArray
+from bx_extras.fpconst import isNaN
+from bx.bitset_utils import *
+import pysam
 
+#modules from RSEQC
 from qcmodule import SAM
+from qcmodule import BED
+from qcmodule import bam_cigar
 
 from pylatex import Document, Section, Subsection, Tabular, Math, TikZ, Axis, \
     Plot, Figure, Package, Matrix, Command, Itemize
@@ -135,7 +142,7 @@ def Kallisto(read1,read2,index,ref,kmer,boost,thread,logger,out):
 	logger.info("Starting Kallisto Quantification...")
 	call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output",read1,read2])
 
-def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread):
+def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread,ribo):
 	global post
 	#Function to run bwa
 	if ref != 'Na':
@@ -152,6 +159,12 @@ def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread):
 
 	cmd = "echo 'Post Mapping Metrics' > "+out+"/PostMappingMetrics.txt"
 	os.system(cmd)
+
+	if ribo != 'Na':
+		RibosomalStat(out+"/Bwa.hits.sam.sorted",ribo,out,logger)
+		cmd = "cat "+out+"/RibosomalStat.txt > "+out+"/PostMappingMetrics.txt"
+                os.system(cmd)
+
 	PostMapping(out+"/Bwa.hits.sam.sorted",logger,out)
 	if post=="True":
 		PostQuality(out+"/Bwa.hits.sam.sorted",out,logger)
@@ -173,7 +186,7 @@ def BowtieIndex(file,out,logger,libtype,bowalgo,read1,read2,thread,gtf,multi):
 	os.system(cmd)
 	TopHat(read1,read2,file,out,libtype,bowalgo,thread,logger,gtf,multi)
 
-def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask):
+def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo):
 	#Function to run tophat
 	logger.info("Running TopHat...")
 	cmd = "tophat "+libtype+" "+bowalgo+" -o "+out+"/TopHat "+"-p "+str(thread)+" "+bowref+" "+read1+" "+read2
@@ -184,6 +197,12 @@ def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask):
         os.system(cmd)
         cmd = "echo ' ' >> "+out+"/PostMappingMetrics.txt"
         os.system(cmd)
+
+	if ribo != 'Na':
+		RibosomalStat(out+"/TopHat/accepted_hits.bam",ribo,out,logger)
+		cmd = "cat "+out+"/RibosomalStat.txt > "+out+"/PostMappingMetrics.txt"
+		os.system(cmd)
+
 	PostMapping(out+"/TopHat/accepted_hits.bam",logger,out)
 	if post =="True":
 		PostQuality(out+"/TopHat/accepted_hits.bam",out,logger)
@@ -235,7 +254,95 @@ def PostQuality(file,out,logger):
                         pass
         else:
                 logger.error("Failed to plot graphs")
-                sys.exit(0)	
+                sys.exit(0)
+
+###Functions from RSEQC###	
+def searchit(exon_range, exon_list):
+        '''return 1 if find, return 0 if cannot find'''
+        for chrom, st, end in exon_list:
+                if chrom.upper() not in exon_range:
+                        return 0
+                elif len(exon_range[chrom].find(st,end)) >=1:
+                        return 1
+        return 0
+
+def build_bitsets(list):
+        '''build intevalTree from list'''
+        ranges={}
+        for l in list:
+                chrom =l[0].upper()
+                st = int(l[1])
+                end = int(l[2])
+                if chrom not in ranges:
+                        ranges[chrom] = Intersecter()
+                ranges[chrom].add_interval( Interval( st, end ) )
+        return ranges
+###Functions from RSEQC###
+
+def RibosomalStat(bam,ribo,out,logger):
+	#Funcetion to call split_bam.py to calculate ribosomal stats
+	logger.info("Reading Ribosome bed file to compute contamination...")
+	obj = BED.ParseBED(ribo)
+        exons = obj.getExon()
+        exon_ranges = build_bitsets(exons)
+	
+	samfile = pysam.Samfile(bam,'rb')
+	fout = open(out+"/RibosomalStat.txt",'w') 
+
+	total_alignment = 0
+        in_alignment = 0
+        ex_alignment = 0
+        bad_alignment = 0
+	
+	logger.info("Computing Contamination...")
+	try:
+                while(1):
+                        aligned_read = samfile.next()
+                        total_alignment += 1
+                        
+                        if aligned_read.is_qcfail:
+                                bad_alignment +=1
+                                continue
+                        if aligned_read.is_unmapped:
+                                bad_alignment +=1
+                                continue
+                        
+                        chrom = samfile.getrname(aligned_read.tid)
+                        chrom=chrom.upper()     
+                        read_start = aligned_read.pos
+                        mate_start = aligned_read.mpos
+                                
+                        #read_exons = bam_cigar.fetch_exon(chrom, aligned_read.pos, aligned_read.cigar)
+                        if aligned_read.mate_is_unmapped:       #only one end mapped
+                                if chrom not in exon_ranges:
+                                        ex_alignment += 1
+                                        continue                
+                                else:           
+                                        if len(exon_ranges[chrom].find(read_start, read_start +1)) >= 1:
+                                                in_alignment += 1
+                                                continue
+                                        elif len(exon_ranges[chrom].find(read_start, read_start +1)) == 0:
+                                                ex_alignment += 1
+                                                continue
+                        else:                                                   #both end mapped
+                                if chrom not in exon_ranges:
+                                        ex_alignment += 1
+                                        continue
+                                else:
+                                        if (len(exon_ranges[chrom].find(read_start, read_start +1)) >= 1) or (len(exon_ranges[chrom].find(mate_start, mate_start +1)) >= 1):
+                                                in_alignment += 1
+                                        else:
+                                                ex_alignment += 1
+	except StopIteration:
+                logger.info("Done")
+
+	fout.write("\nRibosomal RNA Content Stats:\n")
+	fout.write("-----------------------------------\n")
+	fout.write("\nTotal Records: "+total_alignment)
+	fout.write("\nReads consumed by Ribosomal input file: "+in_alignment)
+	fout.write("\nReads not consumed by Ribosomal input file: "+ex_alignment)
+	fout.write("\nQC Failed/Unmapped reads: "+ad_alignment)
+	fout.close()
 
 def GeneratePDF(read1,read2,out,logger):
 	#Function to generate pdf report summary of all the stats
@@ -374,6 +481,7 @@ def main():
 
 	post = parser.add_argument_group("Post Mapping Metrics Graph")
 	post.add_argument('-p','--post',dest="post",help="Use this option if you want post mapping metrics graph [Default=True]", action="store_const",const="True",default="True")
+	post.add_argument('--ribosome',dest='rrna',help="Specifiy the ribosomal bed file in order to calculate statistics of ribosomal content", default='Na', metavar="<path to file>")
 
 	parser.add_argument("--skippre",dest="skippre",help="Use this option if you want to skip pre processing steps [Default=False]",action="store_const",const="True",default="False")
 	parser.add_argument("--normalize", dest="norm",help="Use this option if you want to normalize the input data [Default=False]", action="store_const",const="True",default="False")
@@ -506,7 +614,7 @@ def main():
 		extra = ""
 		if args.strand != "None":
 			extra = "--"+args.strand
-		Bwa(read1,read2,args.bindex,args.bref,args.algo,extra,logger,args.out,args.thread)
+		Bwa(read1,read2,args.bindex,args.bref,args.algo,extra,logger,args.out,args.thread,args.rrna)
 	else:
 		log.info("User opted to perform analysis to detect novel transcripts, Prepping for Tophat, Cufflinks and eXpress...")	
 		libtype = ""
