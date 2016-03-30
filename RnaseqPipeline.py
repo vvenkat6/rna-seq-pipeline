@@ -121,11 +121,11 @@ def Quality_Assessment(read,kmer,logger,out,type):
 						fout.write("\t\t Only fragment bias in the first 13bp found.")
 	fout.close()
 
-def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,logger):
+def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,adapter,logger):
 	#Function to trim reads using Trimmomatic
 	logger.info('Trimming the reads')
-	#call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])
-	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail)])	
+	#call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])
+	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail)])	
 
 def khmer(read1,read2,kmer,logger):
 	#function to normalize reads based on given kmer length
@@ -450,13 +450,14 @@ def main():
 	
 	trimmomatic = parser.add_argument_group("Trimmomatic options")
 	parser.add_argument('--threads',dest="thread",help="Set the number of threads to use for trimmomatic [Default=4]",default=4,type=int,metavar="number(int)")
-	trimmomatic.add_argument('--phred33|phred64',dest="phred",default="phred64",choices=["phred33","phred64"])
-	trimmomatic.add_argument('--leading',dest="trimlead",help="Specify the minimum quality to keep a base towards the start of the sequence [Default = 20]", type=int, default=20,metavar="quality(int)")
-	trimmomatic.add_argument('--trailing',dest="trimtrail",help="Specify the minimum quality to keep a base towards the end of the sequence [Default = 20]",type=int,default=20,metavar="quality(int)")
+	trimmomatic.add_argument('--phred33|phred64',dest="phred",default="phred33",choices=["phred33","phred64"])
+	trimmomatic.add_argument('--leading',dest="trimlead",help="Specify the minimum quality to keep a base towards the start of the sequence [Default = 5]",type=int,default=5,metavar="quality(int)")
+	trimmomatic.add_argument('--trailing',dest="trimtrail",help="Specify the minimum quality to keep a base towards the end of the sequence [Default = 5]",type=int,default=5,metavar="quality(int)")
 	trimmomatic.add_argument('--headcrop',dest="trimcrop",help="Specify the number of bases to remove, from the start of the read [Default = 0]",type=int,default=0,metavar="length(int)")	
 	trimmomatic.add_argument('--minlen',dest="trimlen",help="Specify the minimum lengths of read to keep [Default = 0]",type=int,default=0,metavar="length(int)")
 	trimmomatic.add_argument('--window',dest="trimwindow",help="Specify the number of bases to average across for sliding window [Default=0]",type=int,default=0,metavar="size(int)")
 	trimmomatic.add_argument('--quality',dest="trimq",help="Specify the average quality required [Default = 0]", type=int, default=0, metavar="quality(int)")
+	trimmomatic.add_argument('--adapter',dest="adapter",help="Specify the adapter file to use to clip from reads", default="adapters/TruSeq2-PE.fa", metavar="<path to adapter file>")
 
 	kallisto = parser.add_argument_group("Fast Alginment Option - Kallisto")
 	kallisto.add_argument('--kref',dest='kref',help="Enter the fasta file to be used to construct index",metavar="<path to file>",default="Na")
@@ -507,6 +508,12 @@ def main():
                 logger.error("The read 2 file is not readable")
                 parser.print_help()
                 sys.exit()
+
+	adapter = args.adapters
+
+	if(not os.path.exists(args.adapters)):
+		logger.warning("The adapter file to clip reads is not specified")
+		adapter = 'Na'
 
 	if(args.type == "F"):
 		if (args.kindex == "Na" and args.kref == "Na"):
@@ -585,7 +592,7 @@ def main():
 		#Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
 		#Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
-		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,logger)
+		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
 		#read1 = args.out+"/"+args.out+"_paired1.fq"
 		#read2 = args.out+"/"+args.out+"_paired2.fq"
 
