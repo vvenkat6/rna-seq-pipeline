@@ -125,22 +125,26 @@ def khmer(read1,read2,kmer,logger):
 	logger.info("Normalizing the given reads...")
 	call(["normalize-by-median.py","-k",kmer,read1,read2])
 
-def Kallisto(read1,read2,file,kmer,boost,thread,logger,out):
+def Kallisto(read1,read2,index,ref,kmer,boost,thread,logger,out):
 	#Function to run Kallisto
-	logger.info('Starting kallisto Indexing step...')
-	call(["kallisto","index","-i","kallisto_indexfile.idx","-k",str(kmer),file])
+	if ref != 'Na':
+		logger.info('Starting kallisto Indexing step...')
+		call(["kallisto","index","-i",out+"/kallisto_indexfile.idx","-k",str(kmer),ref])
+		index = out+"/kallisto_indexfile.idx"
 	
-	logger.info("Kallisto Indexing over. Starting Quantification...")
-	call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i","kallisto_indexfile.idx","-o",out+"/Kallisto_Output",read1,read2])
+	logger.info("Starting Kallisto Quantification...")
+	call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output",read1,read2])
 
-def Bwa(read1,read2,file,algo,extra,logger,out,thread):
+def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread):
 	global post
 	#Function to run bwa
-	logger.info("Starting bwa indexing step...")
-	call(["bwa","index",file])
+	if ref != 'Na':
+		logger.info("Starting bwa indexing step...")
+		call(["bwa","index",ref])
+		index = ref
 
-	logger.info("Bwa Indexing over. Starting Quantification...")
-	cmd = "bwa "+algo+" "+"-t "+thread+" "+file+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
+	logger.info("Starting BWA Quantification...")
+	cmd = "bwa "+algo+" "+"-t "+thread+" "+index+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
 	os.system(cmd)
 	logger.info("Sorting sam file...")
 	cmd = "samtools sort -n --threads"+thread+" "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
@@ -151,7 +155,7 @@ def Bwa(read1,read2,file,algo,extra,logger,out,thread):
 	PostMapping(out+"/Bwa.hits.sam.sorted",logger,out)
 	if post=="True":
 		PostQuality(out+"/Bwa.hits.sam.sorted",out,logger)
-	eXpress(file, out+"/Bwa.hits.sam.sorted",extra,logger)
+	eXpress(index, out+"/Bwa.hits.sam.sorted",extra,logger)
 
 def eXpress(file,sam,extra,logger):
 	#Function to run express analysis
@@ -243,9 +247,10 @@ def GeneratePDF(read1,read2,out,logger):
 	doc.append(NoEscape(r'\maketitle'))
 
 	with doc.create(Section('Pre-Processing Data')):
-		doc.append("")
+		doc.append(italic("This section contains the input read data before processing."))
 
         with doc.create(Subsection('Base Quality Graph')):
+		doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the FastQ file."))
 		with doc.create(Figure(position='h!')) as pic:
                 	pic.add_image("preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
                 	pic.add_caption(read1.split('/')[-1].split('.')[0])
@@ -270,6 +275,7 @@ def GeneratePDF(read1,read2,out,logger):
                 doc.append("")
 
         with doc.create(Subsection('Base Quality Graph')):
+		doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the FastQ file."))
                 with doc.create(Figure(position='h!')) as pic3:
                         pic3.add_image("postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
                         pic3.add_caption(read1.split('/')[-1].split('.')[0])
@@ -307,13 +313,18 @@ def GeneratePDF(read1,read2,out,logger):
 		os.system(cmd)
 
 		with doc.create(Subsection('Visual Summary')):
+			doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the alignment file."))
 			with doc.create(Figure(position='h!')) as pic:
 				pic.add_image(out+".qual.heatmap.png", width='160px')
 				pic.add_caption("Alignment Quality")
 
+			doc.append(italic("This graph shows read duplication rate."))
 			with doc.create(Figure(position='h')) as pic2:
 				pic2.add_image(out+".DupRate_plot.png", width='160px')
 				pic2.add_caption("Duplication Rate")
+			with doc.create(Itemize()) as itemize:
+				itemize.add_item(italic("Sequence based: reads with identical sequence are regarded as duplicated reads."))
+				itemize.add_item(italic("Mapping based: reads mapped to the exactly same genomic location are regarded as duplicated reads."))
 		
 	doc.generate_pdf(out+'/Summary_Report', clean=False)
 	
@@ -341,12 +352,14 @@ def main():
 	trimmomatic.add_argument('--quality',dest="trimq",help="Specify the average quality required [Default = 0]", type=int, default=0, metavar="quality(int)")
 
 	kallisto = parser.add_argument_group("Fast Alginment Option - Kallisto")
-	kallisto.add_argument('--kindex',dest='kindex',help="Enter the fasta file to be used to construct index",metavar="<path to file>",default="Na")
+	kallisto.add_argument('--kref',dest='kref',help="Enter the fasta file to be used to construct index",metavar="<path to file>",default="Na")
+	kallisto.add_argument('--kindex',dest='kindex',help="Enter the kallisto index to be used for quantification",metavar="<path to file>",default="Na")
 	kallisto.add_argument('--kkmer',dest='kkmer',help="Specify the kmer length to be used [Default = 31]", type=int, default=31,metavar="kmer-size(int)")
-	kallisto.add_argument('--kboost',dest='kboost',help="Specify the number of bootstraps to perform [Default = 0]", type=int, default=0, metavar="num(int)")	
+	kallisto.add_argument('--kboost',dest='kboost',help="Specify the number of bootstraps to perform [Default = 0]", type=int, default=0, metavar="num(int)")		
 
 	slow = parser.add_argument_group("Slow Allignment Option - BWA + eXpress")
-	slow.add_argument('--bindex',dest='bindex',help="Enter the fasta file to be used to construct index", metavar="<path to file>", default="Na")
+	slow.add_argument('--bref',dest='bref',help="Enter the fasta file to be used to construct the index", metavar="<path to .fa file>",default="Na")
+	slow.add_argument('--bindex',dest='bindex',help="Enter the bwa index file to be used for quantification", metavar="<path to bwa index file>", default="Na")
 	slow.add_argument('--algo',dest='algo',help="Specify the algorithm to be used for algorithm [Default = mem]", choices=["mem","bwasw","sampe"], default="mem") 
 	slow.add_argument('--strand',dest='strand',help="Specify Strand option to run eXpress", choices=['fr-stranded','rf-stranded','f-stranded','r-stranded'], default="None")	
 
@@ -388,16 +401,30 @@ def main():
                 sys.exit()
 
 	if(args.type == "F"):
-		if (args.kindex == 'Na' or not os.path.exists(args.kindex)):
-			logger.error("The fasta file for building index is not readable [--kindex]")
-			parser.print_help()
-			sys.exit()
+		if (args.kindex == "Na" and args.kref == "Na"):
+                        logger.error("Please enter either a reference file to build kallisto reference [--kref] or a kallisto index [--kindex]")
+                        sys.exit()
+			
+                elif (args.kindex == 'Na' and not os.path.exists(args.kref)):
+                        logger.error("The file for building index is not readable")
+                        sys.exit()
+
+		elif (args.kref == 'Na' and not os.path.exists(args.kindex)):
+                        logger.error("Trouble reading kallisto index file")
+                        sys.exit()
 	
 	if(args.type == "S"):
-                if (args.bindex == 'Na' or not os.path.exists(args.bindex)):
-                        logger.error("The fasta file for building index is not readable [--bindex]")
-                        parser.print_help()
+		if (args.bindex == "Na" and args.bref == "Na"):
+                        logger.error("Please enter either a reference file to build bwa reference [--bref] or a bwa index [--bindex]")
                         sys.exit()
+
+                elif (args.bindex == 'Na' and not os.path.exists(args.bref)):
+                        logger.error("The file for building index is not readable")
+                        sys.exit()
+
+                elif (args.bref == 'Na' and not os.path.exists(args.bindex)):
+                        logger.error("Trouble reading bwa index file")
+                        sys.exit()	
 
 	if(args.type == "N"):
 		if (args.bowindex == "Na" and args.bowref == "Na"):
@@ -472,14 +499,14 @@ def main():
 
 	if args.type=="F":
 		log.info("User opted for fast analysis, Prepping for Kallisto...")
-		Kallisto(read1,read2,args.kindex,args.kkmer,args.kboost,args.thread,logger,args.out)
+		Kallisto(read1,read2,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out)
 
 	elif args.type=="S":
 		log.info("User opted for slow analysis, Prepping for bwa and eXpress...")
 		extra = ""
 		if args.strand != "None":
 			extra = "--"+args.strand
-		Bwa(read1,read2,args.bindex,args.algo,extra,logger,args.out,args.thread)
+		Bwa(read1,read2,args.bindex,args.bref,args.algo,extra,logger,args.out,args.thread)
 	else:
 		log.info("User opted to perform analysis to detect novel transcripts, Prepping for Tophat, Cufflinks and eXpress...")	
 		libtype = ""
