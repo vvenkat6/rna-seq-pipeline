@@ -223,7 +223,32 @@ def Cufflinks(file,gtf,thread,libtype,multi,out,logger,mask):
                 mask = " --mask-file  "+mask
 
 	call(["cufflinks",file,"-o",out+"/Cufflinks","-u",multi,"--library-type",libtype,"-p",str(thread),gtf,mask])
-	logger.info("Outputs can be accessed from "+out+"/Cufflinks/isoforms.fpkm_tracking")
+	logger.info("Outputs can be accessed from "+out+"/Cufflinks/isoforms.fpkm_tracking")	
+	TPMCalculator(out,logger)
+
+def TPMCalculator(out,logger):
+	#Function to add TPM metrics to Cufflinks output file
+	logger.info("Adding TPM metrics to Cufflinks output...")
+
+	with open(out+"/Cufflinks/isoform.fpkm_tracking") as f:
+		sum = 0
+		for line in f:
+			line = line.strip().split('\t')
+			if line[0] != 'tracking_id':
+				sum += int(line[9])
+
+	fout = open(out+"/Cufflinks/Final.isoform.fpkm_tracking",'w')
+	with open(out+"/Cufflinks/isoform.fpkm_tracking") as f:
+		for line in f:
+                        line = line.strip().split('\t')
+			if line[0] != 'tracking_id':
+				tpm = (int(line[9])/sum)*(10**6)
+				fout.write(line.strip()+"\t"+str(tpm)+"\n")
+			else:
+				fout.write(line.strip()+"\tTPM\n"
+	fout.close()
+	logger.info("Outputs can be accessed from "+out+"/Cufflinks/Final.isoforms.fpkm_tracking")
+			
 
 def PostMapping(file,logger,out):
 	logger.info("Doing Post Mapping analysis...")
@@ -497,7 +522,7 @@ def main():
         formats = logging.Formatter('[%(asctime)s %(name)s %(levelname)s]: %(message)s')
         stream.setFormatter(formats)
         logger.addHandler(stream)
-	'''	
+	
 	#Check the existance of files
 	if(args.read1 == 'Na' or not os.path.exists(args.read1)):
 		logger.error("The read 1 file is not readable")
@@ -509,16 +534,16 @@ def main():
                 parser.print_help()
                 sys.exit()
 
-	adapter = args.adapters
+	adapter = args.adapter
 
-	if(not os.path.exists(args.adapters)):
+	if(not os.path.exists(args.adapter)):
 		logger.warning("The adapter file to clip reads is not specified")
 		adapter = 'Na'
 
 	if(args.type == "F"):
 		if (args.kindex == "Na" and args.kref == "Na"):
                         logger.error("Please enter either a reference file to build kallisto reference [--kref] or a kallisto index [--kindex]")
-                        sys.exit()
+			sys.exit()
 			
                 elif (args.kindex == 'Na' and not os.path.exists(args.kref)):
                         logger.error("The file for building index is not readable")
@@ -575,10 +600,9 @@ def main():
                         if(not os.path.exists(args.mask)):
                                 logger.error("Mask file not readable")
                                 sys.exit()
-	'''
 	read1 = args.read1
 	read2 = args.read2
-	'''	
+	
 	#Creating Directory Structure
 	call(['mkdir',args.out])
 
@@ -637,7 +661,7 @@ def main():
 		else:
 			print args.bowindex
 			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask)
-	'''
+	
 	GeneratePDF(read1,read2,args.out,logger)	
 
 if __name__ == "__main__":
