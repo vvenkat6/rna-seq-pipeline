@@ -165,7 +165,7 @@ def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread,ribo):
 		cmd = "cat "+out+"/RibosomalStat.txt > "+out+"/PostMappingMetrics.txt"
                 os.system(cmd)
 
-	PostMapping(out+"/Bwa.hits.sam.sorted",logger,out)
+	#PostMapping(out+"/Bwa.hits.sam.sorted",logger,out)
 	if post=="True":
 		PostQuality(out+"/Bwa.hits.sam.sorted",out,logger)
 	eXpress(index, out+"/Bwa.hits.sam.sorted",extra,logger)
@@ -203,7 +203,7 @@ def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,r
 		cmd = "cat "+out+"/RibosomalStat.txt > "+out+"/PostMappingMetrics.txt"
 		os.system(cmd)
 
-	PostMapping(out+"/TopHat/accepted_hits.bam",logger,out)
+	#PostMapping(out+"/TopHat/accepted_hits.bam",logger,out)
 	if post =="True":
 		PostQuality(out+"/TopHat/accepted_hits.bam",out,logger)
 	Cufflinks(out+"/TopHat/accepted_hits.bam",gtf,thread,libtype,multi,out,logger)
@@ -263,15 +263,33 @@ def PostMapping(file,logger,out):
 def PostQuality(file,out,logger):
 	out = out+"/"+out
 	#Function to reimplement Read_quality.py and read_duplication.py from RSeQC-2.6.3 package written by Liguo Wang
-	logger.info("Plotting post quality graphs...")
 	if (os.path.exists(file)):
+		logger.info("Reading in alignment file to compile post alignment stats...")
                 obj = SAM.ParseBAM(file)
+
+		logger.info("Compiling stats...")
+		#bam_stats.py implementation from RSeqC
+		fout.open(out+"/tempStat.txt",'w')
+		backup = sys.stdout
+        	sys.stdout = StringIO() 
+        	obj.stat(q_cut = 30)
+        	out = sys.stdout.getvalue()
+        	sys.stdout.close()  
+        	sys.stdout = backup
+        	fout.write(out)
+        	fout.close() 		
+		cmd = "cat "+out+"/tempStat.txt >> "+out+"/PostMappingMetrics.txt")
+		os.system(cmd)
+		logger.info("Post Mapping Metrics can be accessed from "+out+"/PostMappingMetrics.txt")
+		
+		logger.info("Plotting post mapping quality graph...")
                 obj.readsQual_boxplot(outfile=out, q_cut = 30, shrink = 1000)
                 try:
                         subprocess.call("Rscript " + out+ ".qual.r",shell=True)
                 except:
                         pass
 
+		logger.info("Plotting duplication rate graph")
 		obj.readDupRate(outfile=out,up_bound=500, q_cut = 30)
 		try:
                         subprocess.call("Rscript " + out +  ".DupRate_plot.r", shell=True)
