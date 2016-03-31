@@ -388,7 +388,7 @@ def RibosomalStat(bam,ribo,out,logger):
 	fout.write("\nQC Failed/Unmapped reads: "+ad_alignment)
 	fout.close()
 
-def GeneratePDF(read1,read2,out,logger):
+def GeneratePDF(pre1,pre2,read1,read2,out,logger):
 	#Function to generate pdf report summary of all the stats
 	logger.info("Generating PDF report of summary data")
 	doc = Document()
@@ -404,20 +404,20 @@ def GeneratePDF(read1,read2,out,logger):
 		doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the FastQ file."))
 		with doc.create(Figure(position='h!')) as pic:
                 	pic.add_image("preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                	pic.add_caption(read1.split('/')[-1].split('.')[0])
+                	pic.add_caption(pre1.split('/')[-1].split('.')[0])
 		
 		with doc.create(Figure(position='h')) as pic2:
                         pic2.add_image("preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                        pic2.add_caption(read2.split('/')[-1].split('.')[0])
+                        pic2.add_caption(pre2.split('/')[-1].split('.')[0])
 	
 	with doc.create(Subsection('Data Summary')):
 		with doc.create(Itemize()) as itemize:
-			itemize.add_item(read1.split('/')[-1].split('.')[0])
+			itemize.add_item(pre1.split('/')[-1].split('.')[0])
 			with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
 				for line in f:
 					doc.append(line)
 
-			itemize.add_item(read2.split('/')[-1].split('.')[0])
+			itemize.add_item(pre2.split('/')[-1].split('.')[0])
                         with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
                                 for line in f:
                                         doc.append(line)
@@ -429,20 +429,20 @@ def GeneratePDF(read1,read2,out,logger):
 		doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the FastQ file."))
                 with doc.create(Figure(position='h!')) as pic3:
                         pic3.add_image("postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                        pic3.add_caption(read1.split('/')[-1].split('.')[0])
+                        pic3.add_caption(pre1.split('/')[-1].split('.')[0])
 
                 with doc.create(Figure(position='h')) as pic4:
                         pic4.add_image("postFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                        pic4.add_caption(read2.split('/')[-1].split('.')[0])
+                        pic4.add_caption(pre2.split('/')[-1].split('.')[0])
 
         with doc.create(Subsection('Data Summary')):
 		with doc.create(Itemize()) as itemize:
-                	itemize.add_item(read1.split('/')[-1].split('.')[0])
+                	itemize.add_item(pre1.split('/')[-1].split('.')[0])
                         with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
                                 for line in f:
                                         doc.append(line)
 
-                	itemize.add_item(read2.split('/')[-1].split('.')[0])
+                	itemize.add_item(pre2.split('/')[-1].split('.')[0])
                         with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
                                 for line in f:
                                         doc.append(line)
@@ -476,7 +476,9 @@ def GeneratePDF(read1,read2,out,logger):
 			with doc.create(Itemize()) as itemize:
 				itemize.add_item(italic("Sequence based: reads with identical sequence are regarded as duplicated reads."))
 				itemize.add_item(italic("Mapping based: reads mapped to the exactly same genomic location are regarded as duplicated reads."))
-		
+	else:
+		logger.info("No Post Mapping Data available. The rest of the informtation can be accessed from 'Summary_Report.pdf'")	
+	
 	doc.generate_pdf(out+'/Summary_Report', clean=False)
 	
 
@@ -624,7 +626,7 @@ def main():
 	
 	#Creating Directory Structure
 	call(['mkdir',args.out])
-
+	
 	#Pre Processing Data
 	if (args.skippre=="False"):
 		log = logging.getLogger('Pre Processing')
@@ -655,7 +657,7 @@ def main():
                 #Quality_Assessment(read2,args.fastqck,log,args.out,"post")
 	else:
 		logger.info("User opted to skip Pre Processing step")
-
+	
 	#Running RNA-seq according to what the user selected:
 	log = logging.getLogger('RNA Seq')
 	log.setLevel(logging.DEBUG)
@@ -663,7 +665,7 @@ def main():
 
 	if args.type=="F":
 		log.info("User opted for fast analysis, Prepping for Kallisto...")
-		Kallisto(read1,read2,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out)
+		#Kallisto(read1,read2,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out)
 
 	elif args.type=="S":
 		log.info("User opted for slow analysis, Prepping for bwa and eXpress...")
@@ -687,7 +689,7 @@ def main():
 			print args.bowindex
 			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask)
 	
-	GeneratePDF(read1,read2,args.out,logger)	
+	GeneratePDF(args.read1,args.read2,read1,read2,args.out,logger)	
 
 if __name__ == "__main__":
 	main()
