@@ -37,6 +37,7 @@ import string
 import collections
 import math
 import sets
+import glob
 from time import strftime
 import subprocess
 from subprocess import call
@@ -125,7 +126,7 @@ def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,a
 	#Function to trim reads using Trimmomatic
 	logger.info('Trimming the reads')
 	#call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])
-	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail)])	
+	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/triM"+read1.split('/')[-1],out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail)])	
 
 def khmer(read1,read2,kmer,logger):
 	#function to normalize reads based on given kmer length
@@ -245,8 +246,8 @@ def TPMCalculator(out,logger):
 				tpm = (int(line[9])/sum)*(10**6)
 				fout.write(line.strip()+"\t"+str(tpm)+"\n")
 			else:
-				fout.write(line.strip()+"\tTPM\n"
-	fout.close()
+				fout.write(line.strip()+"\tTPM\n")
+
 	logger.info("Outputs can be accessed from "+out+"/Cufflinks/Final.isoforms.fpkm_tracking")
 			
 
@@ -278,7 +279,7 @@ def PostQuality(file,out,logger):
         	sys.stdout = backup
         	fout.write(out)
         	fout.close() 		
-		cmd = "cat "+out+"/tempStat.txt >> "+out+"/PostMappingMetrics.txt")
+		cmd = "cat "+out+"/tempStat.txt >> "+out+"/PostMappingMetrics.txt"
 		os.system(cmd)
 		logger.info("Post Mapping Metrics can be accessed from "+out+"/PostMappingMetrics.txt")
 		
@@ -630,22 +631,28 @@ def main():
         	log.setLevel(logging.DEBUG)
         	log.addHandler(stream)
 		
-		#call(['mkdir',args.out+'/preFastqcMetrics'])
+		call(['mkdir',args.out+'/preFastqcMetrics'])
 		#Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
 		#Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
 		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
-		#read1 = args.out+"/"+args.out+"_paired1.fq"
-		#read2 = args.out+"/"+args.out+"_paired2.fq"
+		read1 = args.out+"/triM"+args.read1.split('/')[-1]
+		read2 = args.out+"/triM"+args.read2.split('/')[-1]
 
 		if (args.norm=="True"):
                 	khmer(read1,read2,args.fastqck,logger)
                 	read1 = read1+".keep"
                 	read2 = read2+".keep"
-	
+			
+		#Renaming preProcessing Summary files for reads
+		call(['mv',args.out+"/preFastqcMetrics/"+args.read1.split('/')[-1].split('.')[0]+"_fastqc",args.out+"/preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc"])
+		call(['mv',args.out+"/preFastqcMetrics/"+args.read2.split('/')[-1].split('.')[0]+"_fastqc",args.out+"/preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc"])
+		call(['mv',args.out+"/"+args.read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
+		call(['mv',args.out+"/"+args.read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
+
 		call(['mkdir',args.out+'/postFastqcMetrics'])
-                Quality_Assessment(args.read1,args.fastqck,log,args.out,"post")
-                Quality_Assessment(args.read2,args.fastqck,log,args.out,"post")
+                #Quality_Assessment(read1,args.fastqck,log,args.out,"post")
+                #Quality_Assessment(read2,args.fastqck,log,args.out,"post")
 	else:
 		logger.info("User opted to skip Pre Processing step")
 
