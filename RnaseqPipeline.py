@@ -42,6 +42,7 @@ from time import strftime
 import subprocess
 from subprocess import call
 import numpy as np
+from cStringIO import StringIO
 
 from bx.bitset import *
 from bx.bitset_builders import *
@@ -126,7 +127,7 @@ def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,a
 	#Function to trim reads using Trimmomatic
 	logger.info('Trimming the reads')
 	#call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])
-	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/triM"+read1.split('/')[-1],out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail)])	
+	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/triM"+read1.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail)])	
 
 def khmer(read1,read2,kmer,logger):
 	#function to normalize reads based on given kmer length
@@ -152,10 +153,11 @@ def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread,ribo):
 		index = ref
 
 	logger.info("Starting BWA Quantification...")
-	cmd = "bwa "+algo+" "+"-t "+thread+" "+index+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
+	cmd = "bwa "+algo+" "+"-t "+str(thread)+" "+index+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
+	print cmd
 	os.system(cmd)
 	logger.info("Sorting sam file...")
-	cmd = "samtools sort -n --threads"+thread+" "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
+	cmd = "samtools sort -n --threads "+str(thread)+" "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
 	os.system(cmd)
 
 	cmd = "echo 'Post Mapping Metrics' > "+out+"/PostMappingMetrics.txt"
@@ -169,13 +171,13 @@ def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread,ribo):
 	#PostMapping(out+"/Bwa.hits.sam.sorted",logger,out)
 	if post=="True":
 		PostQuality(out+"/Bwa.hits.sam.sorted",out,logger)
-	eXpress(index, out+"/Bwa.hits.sam.sorted",extra,logger)
+	eXpress(index, out+"/Bwa.hits.sam.sorted",extra,logger,out)
 
-def eXpress(file,sam,extra,logger):
+def eXpress(file,sam,extra,logger,out):
 	#Function to run express analysis
 	logger.info("Running analysis on output files...")
 
-	cmd = "express "+file+" " +sam+" "+extra
+	cmd = "express "+file+" " +sam+" -o "+out+"/express "+extra
 	os.system(cmd)
 	logger.info("Results are written into results.xprs")
 
@@ -262,38 +264,42 @@ def PostMapping(file,logger,out):
 	logger.info("Post Mapping Metrics can be accessed from "+out+"/PostMappingMetrics.txt")
 
 def PostQuality(file,out,logger):
-	out = out+"/"+out
 	#Function to reimplement Read_quality.py and read_duplication.py from RSeQC-2.6.3 package written by Liguo Wang
 	if (os.path.exists(file)):
 		logger.info("Reading in alignment file to compile post alignment stats...")
                 obj = SAM.ParseBAM(file)
 
-		logger.info("Compiling stats...")
 		#bam_stats.py implementation from RSeqC
-		fout.open(out+"/tempStat.txt",'w')
+		fout = open(out+"/tempStat.txt",'w')
 		backup = sys.stdout
-        	sys.stdout = StringIO() 
+        	sys.stdout = StringIO()
         	obj.stat(q_cut = 30)
-        	out = sys.stdout.getvalue()
+        	op = sys.stdout.getvalue()
         	sys.stdout.close()  
         	sys.stdout = backup
-        	fout.write(out)
-        	fout.close() 		
+		logger.info("Restored backup")
+        	fout.write(op)
+        	fout.close()
+	 		
 		cmd = "cat "+out+"/tempStat.txt >> "+out+"/PostMappingMetrics.txt"
+		print cmd
 		os.system(cmd)
 		logger.info("Post Mapping Metrics can be accessed from "+out+"/PostMappingMetrics.txt")
 		
 		logger.info("Plotting post mapping quality graph...")
-                obj.readsQual_boxplot(outfile=out, q_cut = 30, shrink = 1000)
+		obj2 = SAM.ParseBAM(file)
+                obj2.readsQual_boxplot(outfile=out+"/"+out, q_cut = 30, shrink = 1000)
                 try:
-                        subprocess.call("Rscript " + out+ ".qual.r",shell=True)
+                        subprocess.call("Rscript " + out+"/"+out+ ".qual.r",shell=True)
                 except:
                         pass
-
+	
 		logger.info("Plotting duplication rate graph")
-		obj.readDupRate(outfile=out,up_bound=500, q_cut = 30)
+		
+		backobj = SAM.ParseBAM(file)
+		backobj.readDupRate(outfile=out+"/"+out,up_bound = 500, q_cut = 30)
 		try:
-                        subprocess.call("Rscript " + out +  ".DupRate_plot.r", shell=True)
+                        subprocess.call("Rscript " + out +"/"+out+  ".DupRate_plot.r", shell=True)
                 except:
                         pass
         else:
@@ -634,10 +640,10 @@ def main():
         	log.addHandler(stream)
 		
 		call(['mkdir',args.out+'/preFastqcMetrics'])
-		#Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
-		#Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
+		Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
+		Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
-		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
+		TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
 		read1 = args.out+"/triM"+args.read1.split('/')[-1]
 		read2 = args.out+"/triM"+args.read2.split('/')[-1]
 
@@ -653,8 +659,8 @@ def main():
 		call(['mv',args.out+"/"+args.read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
 
 		call(['mkdir',args.out+'/postFastqcMetrics'])
-                #Quality_Assessment(read1,args.fastqck,log,args.out,"post")
-                #Quality_Assessment(read2,args.fastqck,log,args.out,"post")
+                Quality_Assessment(read1,args.fastqck,log,args.out,"post")
+                Quality_Assessment(read2,args.fastqck,log,args.out,"post")
 	else:
 		logger.info("User opted to skip Pre Processing step")
 	
