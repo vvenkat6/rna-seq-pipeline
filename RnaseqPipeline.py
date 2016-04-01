@@ -181,13 +181,13 @@ def eXpress(file,sam,extra,logger,out):
 	os.system(cmd)
 	logger.info("Results are written into results.xprs")
 
-def BowtieIndex(file,out,logger,libtype,bowalgo,read1,read2,thread,gtf,multi):
+def BowtieIndex(file,out,logger,libtype,bowalgo,read1,read2,thread,gtf,multi,mask,ribo):
 	#Function to build bowtie index
 	logger.info("Starting Bowtie...")
 
 	cmd = "bowtie2-build "+file+" "+file
 	os.system(cmd)
-	TopHat(read1,read2,file,out,libtype,bowalgo,thread,logger,gtf,multi)
+	TopHat(read1,read2,file,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo)
 
 def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo):
 	#Function to run tophat
@@ -208,8 +208,9 @@ def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,r
 
 	#PostMapping(out+"/TopHat/accepted_hits.bam",logger,out)
 	if post =="True":
-		PostQuality(out+"/TopHat/accepted_hits.bam",out,logger)
-	Cufflinks(out+"/TopHat/accepted_hits.bam",gtf,thread,libtype,multi,out,logger)
+		print "ok"
+		#PostQuality(out+"/TopHat/accepted_hits.bam",out,logger)
+	Cufflinks(out+"/TopHat/accepted_hits.bam",gtf,thread,libtype,multi,out,logger,mask)
 
 def Cufflinks(file,gtf,thread,libtype,multi,out,logger,mask):
 	logger.info("Running Cufflinks...")
@@ -217,7 +218,7 @@ def Cufflinks(file,gtf,thread,libtype,multi,out,logger,mask):
 		logger.warning("Running cufflinks without GTF file! This is not recommended")
 		gtf = ''
 	else:
-		gtf = "--GTF-guide "+gtf
+		gtf = " --GTF-guide "+gtf
 
 	if mask == "Na":
                 logger.warning("Running cufflinks without mask file! This is NOT recommended")
@@ -225,7 +226,12 @@ def Cufflinks(file,gtf,thread,libtype,multi,out,logger,mask):
         else:
                 mask = " --mask-file  "+mask
 
-	call(["cufflinks",file,"-o",out+"/Cufflinks","-u",multi,"--library-type",libtype,"-p",str(thread),gtf,mask])
+	if libtype!="":
+		libtype = " --library-type "+libtype
+
+	#call(["cufflinks",file,"-o",out+"/Cufflinks","-u",multi,"--library-type",libtype,"-p",str(thread),gtf,mask])
+	cmd = "cufflinks "+file+" -o "+out+"/Cufflinks -u "+multi+" -p "+str(thread)+" "+gtf+" "+mask+" "+libtype
+	os.system(cmd)
 	logger.info("Outputs can be accessed from "+out+"/Cufflinks/isoforms.fpkm_tracking")	
 	TPMCalculator(out,logger)
 
@@ -233,19 +239,19 @@ def TPMCalculator(out,logger):
 	#Function to add TPM metrics to Cufflinks output file
 	logger.info("Adding TPM metrics to Cufflinks output...")
 
-	with open(out+"/Cufflinks/isoform.fpkm_tracking") as f:
+	with open(out+"/Cufflinks/isoforms.fpkm_tracking") as f:
 		sum = 0
 		for line in f:
 			line = line.strip().split('\t')
 			if line[0] != 'tracking_id':
-				sum += int(line[9])
+				sum += float(line[9])
 
-	fout = open(out+"/Cufflinks/Final.isoform.fpkm_tracking",'w')
-	with open(out+"/Cufflinks/isoform.fpkm_tracking") as f:
+	fout = open(out+"/Cufflinks/Final.isoforms.fpkm_tracking",'w')
+	with open(out+"/Cufflinks/isoforms.fpkm_tracking") as f:
 		for line in f:
-                        line = line.strip().split('\t')
-			if line[0] != 'tracking_id':
-				tpm = (int(line[9])/sum)*(10**6)
+                        lines = line.strip().split('\t')
+			if lines[0] != 'tracking_id':
+				tpm = (float(lines[9])/sum)*(10**6)
 				fout.write(line.strip()+"\t"+str(tpm)+"\n")
 			else:
 				fout.write(line.strip()+"\tTPM\n")
@@ -640,10 +646,10 @@ def main():
         	log.addHandler(stream)
 		
 		call(['mkdir',args.out+'/preFastqcMetrics'])
-		Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
-		Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
+		#Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
+		#Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
-		TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
+		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
 		read1 = args.out+"/triM"+args.read1.split('/')[-1]
 		read2 = args.out+"/triM"+args.read2.split('/')[-1]
 
@@ -659,8 +665,8 @@ def main():
 		call(['mv',args.out+"/"+args.read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
 
 		call(['mkdir',args.out+'/postFastqcMetrics'])
-                Quality_Assessment(read1,args.fastqck,log,args.out,"post")
-                Quality_Assessment(read2,args.fastqck,log,args.out,"post")
+                #Quality_Assessment(read1,args.fastqck,log,args.out,"post")
+                #Quality_Assessment(read2,args.fastqck,log,args.out,"post")
 	else:
 		logger.info("User opted to skip Pre Processing step")
 	
@@ -690,10 +696,10 @@ def main():
 
 		if args.bowref != "Na":
 			log.info("Building Bowtie2 index before proceeding with TopHat")
-			BowtieIndex(args.bowref,args.out,logger,libtype,bowalgo,read1,read2,args.thread,args.gtf,args.multi)
+			BowtieIndex(args.bowref,args.out,logger,libtype,bowalgo,read1,read2,args.thread,args.gtf,args.multi,args.mask,args.rrna)
 		else:
 			print args.bowindex
-			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask)
+			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask,args.rrna)
 	
 	GeneratePDF(args.read1,args.read2,read1,read2,args.out,logger)	
 
