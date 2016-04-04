@@ -128,17 +128,17 @@ def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,a
 	logger.info('Trimming the reads')
 	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/triM"+read1.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])	
 
-def TrimmingPE(read,thread,phred,lead,trail,crop,minlen,window,qual,out,adapter,logger):
+def TrimmingSE(read,thread,phred,lead,trail,crop,minlen,window,qual,out,adapter,logger):
         #Function to trim single ended using Trimmomatic
         logger.info('Trimming the reads')
-        call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),read,out+"/triM"+read.split('/')[-1],"ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)]) 
+        call(["trimmomatic","SE","-trimlog","Trimmomatic.log","-threads",str(thread),read,out+"/triM"+read.split('/')[-1],"ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)]) 
 
 def khmer(read1,read2,kmer,logger):
 	#function to normalize reads based on given kmer length
 	logger.info("Normalizing the given reads...")
 	call(["normalize-by-median.py","-k",kmer,read1,read2])
 
-def Kallisto(read1,read2,read,index,ref,kmer,boost,thread,logger,out):
+def Kallisto(read1,read2,read,index,ref,kmer,boost,thread,logger,out,length,sd):
 	#Function to run Kallisto
 	if ref != 'Na':
 		logger.info('Starting kallisto Indexing step...')
@@ -146,10 +146,10 @@ def Kallisto(read1,read2,read,index,ref,kmer,boost,thread,logger,out):
 		index = out+"/kallisto_indexfile.idx"
 	
 	logger.info("Starting Kallisto Quantification...")
-	if args.read == "Na":
+	if read == "Na":
 		call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output",read1,read2])
 	else:
-		call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output","--single",read])
+		call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output","--single",read,"-l",str(length),"-s",str(sd)])
 
 def Bwa(read1,read2,read,index,ref,algo,extra,logger,out,thread,ribo):
 	global post
@@ -558,6 +558,8 @@ def main():
 	kallisto.add_argument('--kindex',dest='kindex',help="Enter the kallisto index to be used for quantification",metavar="<path to file>",default="Na")
 	kallisto.add_argument('--kkmer',dest='kkmer',help="Specify the kmer length to be used [Default = 31]", type=int, default=31,metavar="kmer-size(int)")
 	kallisto.add_argument('--kboost',dest='kboost',help="Specify the number of bootstraps to perform [Default = 0]", type=int, default=0, metavar="num(int)")		
+	kallisto.add_argument('-l','--fragment-length-mean',dest='length',help="Specify the fragment length mean of the read",type=int, metavar="num(int)",default=0)
+	kallisto.add_argument('-s','--std-dev',dest='sd',help="Specify the standard deviation of the read",type=int,metavar="num(int)",default=-1)
 
 	slow = parser.add_argument_group("Slow Allignment Option - BWA + eXpress")
 	slow.add_argument('--bref',dest='bref',help="Enter the fasta file to be used to construct the index", metavar="<path to .fa file>",default="Na")
@@ -635,6 +637,11 @@ def main():
 		elif (args.kref == 'Na' and not os.path.exists(args.kindex)):
                         logger.error("Trouble reading kallisto index file")
                         sys.exit()
+		
+		if args.read != "Na":
+			if args.length == 0 or args.sd == -1:
+				logger.error("Fragment length mean and sd must be supplied for single-end reads using -l and -s")
+				sys.exit()
 	
 	if(args.type == "S"):
 		if (args.bindex == "Na" and args.bref == "Na"):
@@ -696,7 +703,7 @@ def main():
                 log.setLevel(logging.DEBUG)
                 log.addHandler(stream)
 
-		if (read.args == 'Na'):			
+		if (args.read == 'Na'):			
 			call(['mkdir',args.out+'/preFastqcMetrics'])
 			Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
 			Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
@@ -720,10 +727,11 @@ def main():
                 	Quality_Assessment(read1,args.fastqck,log,args.out,"post")
                 	Quality_Assessment(read2,args.fastqck,log,args.out,"post")
 		else:
+			logger.info("Running Pre Processing for single end reads")
 			call(['mkdir',args.out+'/preFastqcMetrics'])
 			Quality_Assessment(args.read,args.fastqck,log,args.out,"pre")
 
-			TrimmingPE(args.read,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
+			TrimmingSE(args.read,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
                         read = args.out+"/triM"+args.read.split('/')[-1]
 
 			#Renaming preProcessing Summary files for reads
@@ -742,7 +750,7 @@ def main():
 
 	if args.type=="F":
 		log.info("User opted for fast analysis, Prepping for Kallisto...")
-		Kallisto(read1,read2,read,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out)
+		Kallisto(read1,read2,read,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out,args.length,args.sd)
 
 	elif args.type=="S":
 		log.info("User opted for slow analysis, Prepping for bwa and eXpress...")
