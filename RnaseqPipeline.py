@@ -124,17 +124,21 @@ def Quality_Assessment(read,kmer,logger,out,type):
 	fout.close()
 
 def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,adapter,logger):
-	#Function to trim reads using Trimmomatic
+	#Function to trim paired end reads using Trimmomatic
 	logger.info('Trimming the reads')
-	#call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/"+out+"_paired1.fq",out+"/"+out+"_paired2.fq",out+"/"+out+"_unpaired1.fq",out+"/"+out+"_unpaired2.fq","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])
-	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/triM"+read1.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail)])	
+	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/triM"+read1.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])	
+
+def TrimmingPE(read,thread,phred,lead,trail,crop,minlen,window,qual,out,adapter,logger):
+        #Function to trim single ended using Trimmomatic
+        logger.info('Trimming the reads')
+        call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),read,out+"/triM"+read.split('/')[-1],"ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)]) 
 
 def khmer(read1,read2,kmer,logger):
 	#function to normalize reads based on given kmer length
 	logger.info("Normalizing the given reads...")
 	call(["normalize-by-median.py","-k",kmer,read1,read2])
 
-def Kallisto(read1,read2,index,ref,kmer,boost,thread,logger,out):
+def Kallisto(read1,read2,read,index,ref,kmer,boost,thread,logger,out):
 	#Function to run Kallisto
 	if ref != 'Na':
 		logger.info('Starting kallisto Indexing step...')
@@ -142,9 +146,12 @@ def Kallisto(read1,read2,index,ref,kmer,boost,thread,logger,out):
 		index = out+"/kallisto_indexfile.idx"
 	
 	logger.info("Starting Kallisto Quantification...")
-	call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output",read1,read2])
+	if args.read == "Na":
+		call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output",read1,read2])
+	else:
+		call(["kallisto","quant","-t",str(thread),"-b",str(boost),"-i",index,"-o",out+"/Kallisto_Output","--single",read])
 
-def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread,ribo):
+def Bwa(read1,read2,read,index,ref,algo,extra,logger,out,thread,ribo):
 	global post
 	#Function to run bwa
 	if ref != 'Na':
@@ -153,9 +160,12 @@ def Bwa(read1,read2,index,ref,algo,extra,logger,out,thread,ribo):
 		index = ref
 
 	logger.info("Starting BWA Quantification...")
-	cmd = "bwa "+algo+" "+"-t "+str(thread)+" "+index+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
-	print cmd
+	if read == 'Na':
+		cmd = "bwa "+algo+" "+"-t "+str(thread)+" "+index+" "+read1+" "+read2+" > "+out+"/Bwa_output.sam"
+	else:
+		cmd = "bwa "+algo+" "+"-t "+str(thread)+" "+index+" "+read+" > "+out+"/Bwa_output.sam"
 	os.system(cmd)
+
 	logger.info("Sorting sam file...")
 	cmd = "samtools sort -n --threads "+str(thread)+" "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
 	os.system(cmd)
@@ -181,18 +191,22 @@ def eXpress(file,sam,extra,logger,out):
 	os.system(cmd)
 	logger.info("Results are written into results.xprs")
 
-def BowtieIndex(file,out,logger,libtype,bowalgo,read1,read2,thread,gtf,multi,mask,ribo):
+def BowtieIndex(file,out,logger,libtype,bowalgo,read1,read2,read,thread,gtf,multi,mask,ribo):
 	#Function to build bowtie index
 	logger.info("Starting Bowtie...")
 
 	cmd = "bowtie2-build "+file+" "+file
 	os.system(cmd)
-	TopHat(read1,read2,file,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo)
+	TopHat(read1,read2,read,file,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo)
 
-def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo):
+def TopHat(read1,read2,read,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo):
 	#Function to run tophat
 	logger.info("Running TopHat...")
-	cmd = "tophat "+libtype+" "+bowalgo+" -o "+out+"/TopHat "+"-p "+str(thread)+" "+bowref+" "+read1+" "+read2
+	if read == 'Na':
+		cmd = "tophat "+libtype+" "+bowalgo+" -o "+out+"/TopHat "+"-p "+str(thread)+" "+bowref+" "+read1+" "+read2
+	else:
+                cmd = "tophat "+libtype+" "+bowalgo+" -o "+out+"/TopHat "+"-p "+str(thread)+" "+bowref+" "+read1
+	
 	os.system(cmd)
 	cmd = "cat "+ out+"/TopHat/align_summary.txt > "+out+"/PostMappingMetrics.txt"
 	os.system(cmd)
@@ -208,8 +222,7 @@ def TopHat(read1,read2,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,r
 
 	#PostMapping(out+"/TopHat/accepted_hits.bam",logger,out)
 	if post =="True":
-		print "ok"
-		#PostQuality(out+"/TopHat/accepted_hits.bam",out,logger)
+		PostQuality(out+"/TopHat/accepted_hits.bam",out,logger)
 	Cufflinks(out+"/TopHat/accepted_hits.bam",gtf,thread,libtype,multi,out,logger,mask)
 
 def Cufflinks(file,gtf,thread,libtype,multi,out,logger,mask):
@@ -229,7 +242,7 @@ def Cufflinks(file,gtf,thread,libtype,multi,out,logger,mask):
 	if libtype!="":
 		libtype = " --library-type "+libtype
 
-	#call(["cufflinks",file,"-o",out+"/Cufflinks","-u",multi,"--library-type",libtype,"-p",str(thread),gtf,mask])
+	call(["cufflinks",file,"-o",out+"/Cufflinks","-u",multi,"--library-type",libtype,"-p",str(thread),gtf,mask])
 	cmd = "cufflinks "+file+" -o "+out+"/Cufflinks -u "+multi+" -p "+str(thread)+" "+gtf+" "+mask+" "+libtype
 	os.system(cmd)
 	logger.info("Outputs can be accessed from "+out+"/Cufflinks/isoforms.fpkm_tracking")	
@@ -400,7 +413,7 @@ def RibosomalStat(bam,ribo,out,logger):
 	fout.write("\nQC Failed/Unmapped reads: "+ad_alignment)
 	fout.close()
 
-def GeneratePDF(pre1,pre2,read1,read2,out,logger):
+def GeneratePDF(pre1,pre2,pre,read1,read2,read,out,logger):
 	#Function to generate pdf report summary of all the stats
 	logger.info("Generating PDF report of summary data")
 	doc = Document()
@@ -414,50 +427,72 @@ def GeneratePDF(pre1,pre2,read1,read2,out,logger):
 
         with doc.create(Subsection('Base Quality Graph')):
 		doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the FastQ file."))
-		with doc.create(Figure(position='h!')) as pic:
-                	pic.add_image("preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                	pic.add_caption(pre1.split('/')[-1].split('.')[0])
+		if read == 'Na':
+			with doc.create(Figure(position='h!')) as pic:
+                		pic.add_image("preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                		pic.add_caption(pre1.split('/')[-1].split('.')[0])
 		
-		with doc.create(Figure(position='h')) as pic2:
-                        pic2.add_image("preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                        pic2.add_caption(pre2.split('/')[-1].split('.')[0])
-	
+			with doc.create(Figure(position='h')) as pic2:
+                        	pic2.add_image("preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                        	pic2.add_caption(pre2.split('/')[-1].split('.')[0])
+		else:
+			with doc.create(Figure(position='h')) as pic2:
+                                pic2.add_image("preFastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                                pic2.add_caption(pre.split('/')[-1].split('.')[0])
+
 	with doc.create(Subsection('Data Summary')):
 		with doc.create(Itemize()) as itemize:
-			itemize.add_item(pre1.split('/')[-1].split('.')[0])
-			with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
-				for line in f:
-					doc.append(line)
+			if read == 'Na':
+				itemize.add_item(pre1.split('/')[-1].split('.')[0])
+				with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
+					for line in f:
+						doc.append(line)
 
-			itemize.add_item(pre2.split('/')[-1].split('.')[0])
-                        with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
-                                for line in f:
-                                        doc.append(line)
+				itemize.add_item(pre2.split('/')[-1].split('.')[0])
+                        	with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
+                                	for line in f:
+                                        	doc.append(line)
+			else:
+				itemize.add_item(pre.split('/')[-1].split('.')[0])
+                                with open(out+"/"+read.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt") as f:
+                                        for line in f:
+                                                doc.append(line)
 	
 	with doc.create(Section('Post-Processing Data')):
                 doc.append("")
 
         with doc.create(Subsection('Base Quality Graph')):
 		doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the FastQ file."))
-                with doc.create(Figure(position='h!')) as pic3:
-                        pic3.add_image("postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                        pic3.add_caption(pre1.split('/')[-1].split('.')[0])
+                if read == "Na":
+			with doc.create(Figure(position='h!')) as pic3:
+                        	pic3.add_image("postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                        	pic3.add_caption(pre1.split('/')[-1].split('.')[0])
 
-                with doc.create(Figure(position='h')) as pic4:
-                        pic4.add_image("postFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
-                        pic4.add_caption(pre2.split('/')[-1].split('.')[0])
+                	with doc.create(Figure(position='h')) as pic4:
+                        	pic4.add_image("postFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                        	pic4.add_caption(pre2.split('/')[-1].split('.')[0])
+		else:
+			with doc.create(Figure(position='h')) as pic4:
+                                pic4.add_image("postFastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
+                                pic4.add_caption(pre.split('/')[-1].split('.')[0])
 
         with doc.create(Subsection('Data Summary')):
 		with doc.create(Itemize()) as itemize:
-                	itemize.add_item(pre1.split('/')[-1].split('.')[0])
-                        with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
-                                for line in f:
-                                        doc.append(line)
+			if read == 'Na':
+                		itemize.add_item(pre1.split('/')[-1].split('.')[0])
+                        	with open(out+"/"+read1.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
+                                	for line in f:
+                                        	doc.append(line)
 
-                	itemize.add_item(pre2.split('/')[-1].split('.')[0])
-                        with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
-                                for line in f:
-                                        doc.append(line)
+                		itemize.add_item(pre2.split('/')[-1].split('.')[0])
+                        	with open(out+"/"+read2.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
+                                	for line in f:
+                                        	doc.append(line)
+			else:
+				itemize.add_item(pre.split('/')[-1].split('.')[0])
+                                with open(out+"/"+read.split('/')[-1].split('.')[0]+"_postprocess_Summary.txt") as f:
+                                        for line in f:
+                                                doc.append(line)
 
 	if os.path.exists(out+"/PostMappingMetrics.txt"):
 		with doc.create(Section('Post Mapping Data')):
@@ -467,27 +502,27 @@ def GeneratePDF(pre1,pre2,read1,read2,out,logger):
 			with open(out+"/PostMappingMetrics.txt") as f:
 				for line in f:
 					doc.append(line)
-
-		cmd = "sips -s format png "+out+"/"+out+".qual.heatmap.pdf --out "+out+"/"+out+".qual.heatmap.png"
-		os.system(cmd)
 		
-		cmd = "sips -s format png "+out+"/"+out+".DupRate_plot.pdf --out "+out+"/"+out+".Duprate_plot.png"
-                print cmd
-		os.system(cmd)
+		if os.path.exists(out+"/"+out+".qual.heatmap.pdf"):
+			cmd = "sips -s format png "+out+"/"+out+".qual.heatmap.pdf --out "+out+"/"+out+".qual.heatmap.png"
+			os.system(cmd)
+		
+			cmd = "sips -s format png "+out+"/"+out+".DupRate_plot.pdf --out "+out+"/"+out+".Duprate_plot.png"
+			os.system(cmd)
 
-		with doc.create(Subsection('Visual Summary')):
-			doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the alignment file."))
-			with doc.create(Figure(position='h!')) as pic:
-				pic.add_image(out+".qual.heatmap.png", width='160px')
-				pic.add_caption("Alignment Quality")
+			with doc.create(Subsection('Visual Summary')):
+				doc.append(italic("This graph shows an overview of the range of quality values across all bases at each position in the alignment file."))
+				with doc.create(Figure(position='h!')) as pic:
+					pic.add_image(out+".qual.heatmap.png", width='160px')
+					pic.add_caption("Alignment Quality")
 
-			doc.append(italic("This graph shows read duplication rate."))
-			with doc.create(Figure(position='h')) as pic2:
-				pic2.add_image(out+".DupRate_plot.png", width='160px')
-				pic2.add_caption("Duplication Rate")
-			with doc.create(Itemize()) as itemize:
-				itemize.add_item(italic("Sequence based: reads with identical sequence are regarded as duplicated reads."))
-				itemize.add_item(italic("Mapping based: reads mapped to the exactly same genomic location are regarded as duplicated reads."))
+				doc.append(italic("This graph shows read duplication rate."))
+				with doc.create(Figure(position='h')) as pic2:
+					pic2.add_image(out+".DupRate_plot.png", width='160px')
+					pic2.add_caption("Duplication Rate")
+				with doc.create(Itemize()) as itemize:
+					itemize.add_item(italic("Sequence based: reads with identical sequence are regarded as duplicated reads."))
+					itemize.add_item(italic("Mapping based: reads mapped to the exactly same genomic location are regarded as duplicated reads."))
 	else:
 		logger.info("No Post Mapping Data available. The rest of the informtation can be accessed from 'Summary_Report.pdf'")	
 	
@@ -499,8 +534,9 @@ def main():
 	parser = argparse.ArgumentParser(prog='rnaseq',description="Program to help run RNA-seq Analysis")
 	required = parser.add_argument_group("Required Options")
 	required.add_argument('-t','--type',dest='type',help="Enter the type of analysis you want to do (F=Fast, S=Slow, N=Novel) [default=F]",choices=['F','S','N'],required=True, default="F")
-	required.add_argument('-r1','--read1',dest='read1',help="Enter the location of read 1", required=True,metavar="\b",default="Na")
-	required.add_argument('-r2','--read2',dest='read2',help="Enter the location of read 2", required=True,metavar="\b",default="Na")
+	required.add_argument('-r1','--read1',dest='read1',help="Enter the location of read 1", metavar="\b",default="Na")
+	required.add_argument('-r2','--read2',dest='read2',help="Enter the location of read 2", metavar="\b",default="Na")
+	required.add_argument('-r','--read',dest='read',help="Enter the location of single ended read",metavar="\b",default="Na")
 	required.add_argument('-o','--output',dest="out",help="Enter the prefix to your output files", required=True, metavar="\b",default="out")	
 
 	fastqc = parser.add_argument_group("FastQC options")
@@ -557,12 +593,26 @@ def main():
         logger.addHandler(stream)
 	
 	#Check the existance of files
-	if(args.read1 == 'Na' or not os.path.exists(args.read1)):
+	if(args.read == 'Na' and args.read1 == 'Na' and args.read2 == 'Na'):
+                logger.error("No reads given")
+                parser.print_help()
+                sys.exit()
+
+	if(args.read != 'Na' and args.read1 != 'Na' and args.read2 != 'Na'):
+                logger.error("Please choose between single end read and paired end read")
+                parser.print_help()
+                sys.exit()
+
+	if(args.read != 'Na' and not os.path.exists(args.read)):
+                logger.error("Single read not readable")
+                sys.exit()
+
+	if(args.read1 != 'Na' and not os.path.exists(args.read1) and args.read == 'Na'):
 		logger.error("The read 1 file is not readable")
 		parser.print_help()
 		sys.exit()
 
-	if(args.read2 == 'Na' or not os.path.exists(args.read2)):
+	if(args.read2 != 'Na' and not os.path.exists(args.read2) and args.read == 'Na'):
                 logger.error("The read 2 file is not readable")
                 parser.print_help()
                 sys.exit()
@@ -635,6 +685,7 @@ def main():
                                 sys.exit()
 	read1 = args.read1
 	read2 = args.read2
+	read = args.read
 	
 	#Creating Directory Structure
 	call(['mkdir',args.out])
@@ -642,31 +693,45 @@ def main():
 	#Pre Processing Data
 	if (args.skippre=="False"):
 		log = logging.getLogger('Pre Processing')
-        	log.setLevel(logging.DEBUG)
-        	log.addHandler(stream)
-		
-		call(['mkdir',args.out+'/preFastqcMetrics'])
-		#Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
-		#Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
+                log.setLevel(logging.DEBUG)
+                log.addHandler(stream)
 
-		#TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
-		read1 = args.out+"/triM"+args.read1.split('/')[-1]
-		read2 = args.out+"/triM"+args.read2.split('/')[-1]
+		if (read.args == 'Na'):			
+			call(['mkdir',args.out+'/preFastqcMetrics'])
+			Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
+			Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
-		if (args.norm=="True"):
-                	khmer(read1,read2,args.fastqck,logger)
-                	read1 = read1+".keep"
-                	read2 = read2+".keep"
+			TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
+			read1 = args.out+"/triM"+args.read1.split('/')[-1]
+			read2 = args.out+"/triM"+args.read2.split('/')[-1]
+
+			if (args.norm=="True"):
+                		khmer(read1,read2,args.fastqck,logger)
+                		read1 = read1+".keep"
+                		read2 = read2+".keep"
 			
-		#Renaming preProcessing Summary files for reads
-		call(['mv',args.out+"/preFastqcMetrics/"+args.read1.split('/')[-1].split('.')[0]+"_fastqc",args.out+"/preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc"])
-		call(['mv',args.out+"/preFastqcMetrics/"+args.read2.split('/')[-1].split('.')[0]+"_fastqc",args.out+"/preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc"])
-		call(['mv',args.out+"/"+args.read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
-		call(['mv',args.out+"/"+args.read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
+			#Renaming preProcessing Summary files for reads
+			call(['mv',args.out+"/preFastqcMetrics/"+args.read1.split('/')[-1].split('.')[0]+"_fastqc",args.out+"/preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc"])
+			call(['mv',args.out+"/preFastqcMetrics/"+args.read2.split('/')[-1].split('.')[0]+"_fastqc",args.out+"/preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc"])
+			call(['mv',args.out+"/"+args.read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read1.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
+			call(['mv',args.out+"/"+args.read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read2.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
 
-		call(['mkdir',args.out+'/postFastqcMetrics'])
-                #Quality_Assessment(read1,args.fastqck,log,args.out,"post")
-                #Quality_Assessment(read2,args.fastqck,log,args.out,"post")
+			call(['mkdir',args.out+'/postFastqcMetrics'])
+                	Quality_Assessment(read1,args.fastqck,log,args.out,"post")
+                	Quality_Assessment(read2,args.fastqck,log,args.out,"post")
+		else:
+			call(['mkdir',args.out+'/preFastqcMetrics'])
+			Quality_Assessment(args.read,args.fastqck,log,args.out,"pre")
+
+			TrimmingPE(args.read,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
+                        read = args.out+"/triM"+args.read.split('/')[-1]
+
+			#Renaming preProcessing Summary files for reads
+                        call(['mv',args.out+"/preFastqcMetrics/"+args.read.split('/')[-1].split('.')[0]+"_fastqc",args.out+"/preFastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc"])
+			call(['mv',args.out+"/"+args.read.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt",args.out+"/"+read.split('/')[-1].split('.')[0]+"_preprocess_Summary.txt"])
+
+			call(['mkdir',args.out+'/postFastqcMetrics'])
+                        Quality_Assessment(read,args.fastqck,log,args.out,"post")
 	else:
 		logger.info("User opted to skip Pre Processing step")
 	
@@ -677,14 +742,14 @@ def main():
 
 	if args.type=="F":
 		log.info("User opted for fast analysis, Prepping for Kallisto...")
-		#Kallisto(read1,read2,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out)
+		Kallisto(read1,read2,read,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out)
 
 	elif args.type=="S":
 		log.info("User opted for slow analysis, Prepping for bwa and eXpress...")
 		extra = ""
 		if args.strand != "None":
 			extra = "--"+args.strand
-		Bwa(read1,read2,args.bindex,args.bref,args.algo,extra,logger,args.out,args.thread,args.rrna)
+		Bwa(read1,read2,read,args.bindex,args.bref,args.algo,extra,logger,args.out,args.thread,args.rrna)
 	else:
 		log.info("User opted to perform analysis to detect novel transcripts, Prepping for Tophat, Cufflinks and eXpress...")	
 		libtype = ""
@@ -696,12 +761,12 @@ def main():
 
 		if args.bowref != "Na":
 			log.info("Building Bowtie2 index before proceeding with TopHat")
-			BowtieIndex(args.bowref,args.out,logger,libtype,bowalgo,read1,read2,args.thread,args.gtf,args.multi,args.mask,args.rrna)
+			BowtieIndex(args.bowref,args.out,logger,libtype,bowalgo,read1,read2,read,args.thread,args.gtf,args.multi,args.mask,args.rrna)
 		else:
 			print args.bowindex
-			TopHat(read1,read2,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask,args.rrna)
+			TopHat(read1,read2,read,args.bowindex,args.out,libtype,bowalgo,args.thread,logger,args.gtf,args.multi,args.mask,args.rrna)
 	
-	GeneratePDF(args.read1,args.read2,read1,read2,args.out,logger)	
+	GeneratePDF(args.read1,args.read2,args.read,read1,read2,read,args.out,logger)	
 
 if __name__ == "__main__":
 	main()
