@@ -205,8 +205,8 @@ def TopHat(read1,read2,read,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,m
 	if read == 'Na':
 		cmd = "tophat "+libtype+" "+bowalgo+" -o "+out+"/TopHat "+"-p "+str(thread)+" "+bowref+" "+read1+" "+read2
 	else:
-                cmd = "tophat "+libtype+" "+bowalgo+" -o "+out+"/TopHat "+"-p "+str(thread)+" "+bowref+" "+read1
-	
+                cmd = "tophat "+libtype+" "+bowalgo+" -o "+out+"/TopHat "+"-p "+str(thread)+" "+bowref+" "+read
+		
 	os.system(cmd)
 	cmd = "cat "+ out+"/TopHat/align_summary.txt > "+out+"/PostMappingMetrics.txt"
 	os.system(cmd)
