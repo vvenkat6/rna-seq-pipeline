@@ -180,6 +180,7 @@ def Bwa(read1,read2,read,index,ref,algo,extra,logger,out,thread,ribo):
 
 	#PostMapping(out+"/Bwa.hits.sam.sorted",logger,out)
 	if post=="True":
+		print ""
 		PostQuality(out+"/Bwa.hits.sam.sorted",out,logger)
 	eXpress(index, out+"/Bwa.hits.sam.sorted",extra,logger,out)
 
@@ -304,7 +305,7 @@ def PostQuality(file,out,logger):
 		print cmd
 		os.system(cmd)
 		logger.info("Post Mapping Metrics can be accessed from "+out+"/PostMappingMetrics.txt")
-		
+				
 		logger.info("Plotting post mapping quality graph...")
 		obj2 = SAM.ParseBAM(file)
                 obj2.readsQual_boxplot(outfile=out+"/"+out, q_cut = 30, shrink = 1000)
@@ -440,6 +441,21 @@ def GeneratePDF(pre1,pre2,pre,read1,read2,read,out,logger):
                                 pic2.add_image("preFastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
                                 pic2.add_caption(pre.split('/')[-1].split('.')[0])
 
+	with doc.create(Subsection('Per Base Sequence Content Graph')):
+                doc.append(italic("This graph plots out the proportion of each base position in a file for which each of the four normal DNA bases has been called."))
+                if read == 'Na':
+                        with doc.create(Figure(position='h!')) as pic:
+                                pic.add_image("preFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_sequence_content.png", width='160px')
+                                pic.add_caption(pre1.split('/')[-1].split('.')[0])
+
+                        with doc.create(Figure(position='h')) as pic2:
+                                pic2.add_image("preFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_sequence_content.png", width='160px')
+                                pic2.add_caption(pre2.split('/')[-1].split('.')[0])
+                else:
+                        with doc.create(Figure(position='h')) as pic2:
+                                pic2.add_image("preFastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_sequence_content.png", width='160px')
+                                pic2.add_caption(pre.split('/')[-1].split('.')[0])
+
 	with doc.create(Subsection('Data Summary')):
 		with doc.create(Itemize()) as itemize:
 			if read == 'Na':
@@ -475,6 +491,21 @@ def GeneratePDF(pre1,pre2,pre,read1,read2,read,out,logger):
 			with doc.create(Figure(position='h')) as pic4:
                                 pic4.add_image("postFastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_quality.png", width='160px')
                                 pic4.add_caption(pre.split('/')[-1].split('.')[0])
+	
+	with doc.create(Subsection('Per Base Sequence Content Graph')):
+                doc.append(italic("This graph plots out the proportion of each base position in a file for which each of the four normal DNA bases has been called."))
+                if read == 'Na':
+                        with doc.create(Figure(position='h!')) as pic:
+                                pic.add_image("postFastqcMetrics/"+read1.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_sequence_content.png", width='160px')
+                                pic.add_caption(pre1.split('/')[-1].split('.')[0])
+
+                        with doc.create(Figure(position='h')) as pic2:
+                                pic2.add_image("postFastqcMetrics/"+read2.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_sequence_content.png", width='160px')
+                                pic2.add_caption(pre2.split('/')[-1].split('.')[0])
+                else:
+                        with doc.create(Figure(position='h')) as pic2:
+                                pic2.add_image("postFastqcMetrics/"+read.split('/')[-1].split('.')[0]+"_fastqc/Images/per_base_sequence_content.png", width='160px')
+                                pic2.add_caption(pre.split('/')[-1].split('.')[0])
 
         with doc.create(Subsection('Data Summary')):
 		with doc.create(Itemize()) as itemize:
@@ -523,6 +554,7 @@ def GeneratePDF(pre1,pre2,pre,read1,read2,read,out,logger):
 				with doc.create(Itemize()) as itemize:
 					itemize.add_item(italic("Sequence based: reads with identical sequence are regarded as duplicated reads."))
 					itemize.add_item(italic("Mapping based: reads mapped to the exactly same genomic location are regarded as duplicated reads."))
+		
 	else:
 		logger.info("No Post Mapping Data available. The rest of the informtation can be accessed from 'Summary_Report.pdf'")	
 	
@@ -667,15 +699,13 @@ def main():
 
 		elif (args.bowref == 'Na' and not os.path.exists(args.bowindex+".1.bt2")):
 			logger.error("Trouble reading bowtie files (.1.bt2)")
-			sys.exit()
 		
 		elif (args.bowref == 'Na' and not os.path.exists(args.bowindex+".rev.1.bt2")):
                         logger.error("Trouble reading bowtie reference files (.rev.1.bt2)")
-                        sys.exit()
 
 		elif (args.bowref == 'Na' and not os.path.exists(args.bowindex+".fa")):
                         logger.error("Trouble reading bowtie reference file (.fa)")
-                        sys.exit()
+              
 
 		if (args.gtf == "Na"):
 			logger.warning("GTF file for annotation not specified. Might lead to inaccurate analysis.")
