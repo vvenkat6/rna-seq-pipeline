@@ -64,6 +64,23 @@ from pylatex.utils import italic, NoEscape
 #Global Variable:
 post = "False"
 
+def DeterminePhred(read,out,type,logger):
+	logger.info("Determining read quality encoding...")
+	with open(out+"/"+type+"FastqcMetrics/"+"triM"+read.split('/')[-1].split('.')[0]+"_fastqc/fastqc_data.txt",'r') as f:
+		for line in f:
+                        lines = line.strip().split("\t")
+			if "Encoding" in line:
+				print lines[1].split(" ")[-1]
+				encoding = float(lines[1].split(" ")[-1])
+			elif ">>END_MODULE" in line:
+                                break
+		
+	if encoding >= 1.8:
+		return("--phred33")
+	else:
+		return("--phred64")
+	
+
 def Quality_Assessment(read,kmer,logger,out,type):
 	#Function to run Fastqc
 	logger.info('Running FastQC')
@@ -123,12 +140,12 @@ def Quality_Assessment(read,kmer,logger,out,type):
 						fout.write("\t\t Only fragment bias in the first 13bp found.")
 	fout.close()
 
-def TrimmingPE(read1,read2,thread,phred,lead,trail,crop,minlen,window,qual,out,adapter,logger):
+def TrimmingPE(read1,read2,thread,lead,trail,crop,minlen,window,qual,out,adapter,logger):
 	#Function to trim paired end reads using Trimmomatic
 	logger.info('Trimming the reads')
-	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),"-"+phred,read1,read2,out+"/triM"+read1.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])	
+	call(["trimmomatic","PE","-trimlog","Trimmomatic.log","-threads",str(thread),read1,read2,out+"/triM"+read1.split('/')[-1],out+"/"+out+"_unpaired1.fq.gz",out+"/triM"+read2.split('/')[-1],out+"/"+out+"_unpaired2.fq.gz","ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)])	
 
-def TrimmingSE(read,thread,phred,lead,trail,crop,minlen,window,qual,out,adapter,logger):
+def TrimmingSE(read,thread,lead,trail,crop,minlen,window,qual,out,adapter,logger):
         #Function to trim single ended using Trimmomatic
         logger.info('Trimming the reads')
         call(["trimmomatic","SE","-trimlog","Trimmomatic.log","-threads",str(thread),read,out+"/triM"+read.split('/')[-1],"ILLUMINACLIP:"+adapter+":2:30:10","HEADCROP:"+str(crop),"LEADING:"+str(lead),"TRAILING:"+str(trail),"MINLEN:"+str(minlen),"SLIDINGWINDOW:"+str(window)+":"+str(qual)]) 
@@ -170,6 +187,8 @@ def Bwa(read1,read2,read,index,ref,algo,extra,logger,out,thread,ribo):
 	cmd = "samtools sort -n --threads "+str(thread)+" "+out+"/Bwa_output.sam > "+out+"/Bwa.hits.sam.sorted"
 	os.system(cmd)
 
+	call(["rm",out+"/Bwa_output.sam"])
+
 	cmd = "echo 'Post Mapping Metrics' > "+out+"/PostMappingMetrics.txt"
 	os.system(cmd)
 
@@ -194,11 +213,40 @@ def eXpress(file,sam,extra,logger,out):
 
 def BowtieIndex(file,out,logger,libtype,bowalgo,read1,read2,read,thread,gtf,multi,mask,ribo):
 	#Function to build bowtie index
-	logger.info("Starting Bowtie...")
+	logger.info("Starting Bowtie indexing...")
 
 	cmd = "bowtie2-build "+file+" "+file
 	os.system(cmd)
 	TopHat(read1,read2,read,file,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo)
+
+def BowtieAlign(extra,read1,read2,read,index,ref,logger,out,thread,ribo,phred):
+	#Function to run bowtie2
+	logger.info("Starting Bowtie2...")
+
+	if read == 'Na':
+		call(["bowtie2",phred,"-p",str(thread),"-x",index,"-1",read1,"-2",read2,"-S", out+"/Bowtie2.sam","--very-sensitive-local","--met-file",out+"/Bowtie2.metrics"])
+	else:
+		call(["bowtie2",phred,"-p",str(thread),"-x",index,"-U",read,"-S", out+"/Bowtie2.sam","--very-sensitive-local","--met-file",out+"/Bowtie2.metrics"])
+
+	logger.info("Sorting sam file...")
+        cmd = "samtools sort -n --threads "+str(thread)+" "+out+"/Bowtie2.sam > "+out+"/Bowtie2.sam.sorted"
+        os.system(cmd)
+	
+	call(["rm",out+"/Bowtie2.sam"])
+
+        cmd = "echo 'Post Mapping Metrics' > "+out+"/PostMappingMetrics.txt"
+        os.system(cmd)
+
+	if ribo != 'Na':
+                RibosomalStat(out+"/Bowtie2.sam.sorted",ribo,out,logger)
+                cmd = "cat "+out+"/RibosomalStat.txt > "+out+"/PostMappingMetrics.txt"
+                os.system(cmd)
+
+        if post=="True":
+                PostQuality(out+"/Bowtie2.sam.sorted",out,logger)
+
+	eXpress(index, out+"/Bowtie2.sorted",extra,logger,out)
+
 
 def TopHat(read1,read2,read,bowref,out,libtype,bowalgo,thread,logger,gtf,multi,mask,ribo):
 	#Function to run tophat
@@ -576,7 +624,6 @@ def main():
 	
 	trimmomatic = parser.add_argument_group("Trimmomatic options")
 	parser.add_argument('--threads',dest="thread",help="Set the number of threads to use for trimmomatic [Default=4]",default=4,type=int,metavar="number(int)")
-	trimmomatic.add_argument('--phred33|phred64',dest="phred",default="phred33",choices=["phred33","phred64"])
 	trimmomatic.add_argument('--leading',dest="trimlead",help="Specify the minimum quality to keep a base towards the start of the sequence [Default = 5]",type=int,default=5,metavar="quality(int)")
 	trimmomatic.add_argument('--trailing',dest="trimtrail",help="Specify the minimum quality to keep a base towards the end of the sequence [Default = 5]",type=int,default=5,metavar="quality(int)")
 	trimmomatic.add_argument('--headcrop',dest="trimcrop",help="Specify the number of bases to remove, from the start of the read [Default = 0]",type=int,default=0,metavar="length(int)")	
@@ -598,6 +645,7 @@ def main():
 	slow.add_argument('--bindex',dest='bindex',help="Enter the bwa index file to be used for quantification", metavar="<path to bwa index file>", default="Na")
 	slow.add_argument('--algo',dest='algo',help="Specify the algorithm to be used for algorithm [Default = mem]", choices=["mem","bwasw","sampe"], default="mem") 
 	slow.add_argument('--strand',dest='strand',help="Specify Strand option to run eXpress", choices=['fr-stranded','rf-stranded','f-stranded','r-stranded'], default="None")	
+	slow.add_argument('--bwa',dest='useBwa',help="Use this option if you want the pipeline to force use BWA [Default=False]", action="store_const",const="True")
 
 	novel = parser.add_argument_group("Novel Transcription Detection - TopHat + Cufflinks")
 	novel.add_argument('--bowref',dest="bowref",help="Enter the file to be used to construct bowtie index", metavar="<path to file>", default="Na")
@@ -614,7 +662,7 @@ def main():
 
 	parser.add_argument("--skippre",dest="skippre",help="Use this option if you want to skip pre processing steps [Default=False]",action="store_const",const="True",default="False")
 	parser.add_argument("--normalize", dest="norm",help="Use this option if you want to normalize the input data [Default=False]", action="store_const",const="True",default="False")
-	parser.add_argument('-v','--version', action='version', version='%(prog)s 1.0')
+	parser.add_argument('-v','--version', action='version', version='%(prog)s 2.1.1')
 	args = parser.parse_args()
 	post = args.post
 
@@ -677,7 +725,7 @@ def main():
 	
 	if(args.type == "S"):
 		if (args.bindex == "Na" and args.bref == "Na"):
-                        logger.error("Please enter either a reference file to build bwa reference [--bref] or a bwa index [--bindex]")
+                        logger.error("Please enter either a reference file to build reference [--bref] or an index file [--bindex]")
                         sys.exit()
 
                 elif (args.bindex == 'Na' and not os.path.exists(args.bref)):
@@ -687,6 +735,13 @@ def main():
                 elif (args.bref == 'Na' and not os.path.exists(args.bindex)):
                         logger.error("Trouble reading bwa index file")
                         sys.exit()	
+
+		if args.useBwa != "True":
+			if (args.bref == 'Na' and not os.path.exists(args.bindex+".1.bt2")):
+                        	logger.error("Trouble reading bowtie files (.1.bt2)")
+
+                	if (args.bref == 'Na' and not os.path.exists(args.bindex+".rev.1.bt2")):
+                        	logger.error("Trouble reading bowtie reference files (.rev.1.bt2)")
 
 	if(args.type == "N"):
 		if (args.bowindex == "Na" and args.bowref == "Na"):
@@ -702,10 +757,6 @@ def main():
 		
 		elif (args.bowref == 'Na' and not os.path.exists(args.bowindex+".rev.1.bt2")):
                         logger.error("Trouble reading bowtie reference files (.rev.1.bt2)")
-
-		elif (args.bowref == 'Na' and not os.path.exists(args.bowindex+".fa")):
-                        logger.error("Trouble reading bowtie reference file (.fa)")
-              
 
 		if (args.gtf == "Na"):
 			logger.warning("GTF file for annotation not specified. Might lead to inaccurate analysis.")
@@ -726,7 +777,7 @@ def main():
 	
 	#Creating Directory Structure
 	call(['mkdir',args.out])
-	
+		
 	#Pre Processing Data
 	if (args.skippre=="False"):
 		log = logging.getLogger('Pre Processing')
@@ -738,7 +789,7 @@ def main():
 			Quality_Assessment(args.read1,args.fastqck,log,args.out,"pre")
 			Quality_Assessment(args.read2,args.fastqck,log,args.out,"pre")
 
-			TrimmingPE(args.read1,args.read2,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
+			TrimmingPE(args.read1,args.read2,args.thread,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
 			read1 = args.out+"/triM"+args.read1.split('/')[-1]
 			read2 = args.out+"/triM"+args.read2.split('/')[-1]
 
@@ -761,7 +812,7 @@ def main():
 			call(['mkdir',args.out+'/preFastqcMetrics'])
 			Quality_Assessment(args.read,args.fastqck,log,args.out,"pre")
 
-			TrimmingSE(args.read,args.thread,args.phred,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
+			TrimmingSE(args.read,args.thread,args.trimlead,args.trimtrail,args.trimcrop,args.trimlen,args.trimwindow,args.trimq,args.out,adapter,logger)
                         read = args.out+"/triM"+args.read.split('/')[-1]
 
 			#Renaming preProcessing Summary files for reads
@@ -783,11 +834,25 @@ def main():
 		Kallisto(read1,read2,read,args.kindex,args.kref,args.kkmer,args.kboost,args.thread,logger,args.out,args.length,args.sd)
 
 	elif args.type=="S":
-		log.info("User opted for slow analysis, Prepping for bwa and eXpress...")
 		extra = ""
-		if args.strand != "None":
-			extra = "--"+args.strand
-		Bwa(read1,read2,read,args.bindex,args.bref,args.algo,extra,logger,args.out,args.thread,args.rrna)
+
+		if args.useBwa=="True":
+			log.info("User opted for slow analysis, Prepping for bwa and eXpress...")
+			if args.strand != "None":
+				extra = "--"+args.strand
+			Bwa(read1,read2,read,args.bindex,args.bref,args.algo,extra,logger,args.out,args.thread,args.rrna)
+		else:
+			log.info("User opted for slow analysis, Prepping for bowtie2 and eXpress...")
+	
+			#determine phred score of reads
+			if read != "Na":
+				phred = DeterminePhred(read,args.out,"pre",logger)
+			else:
+				phred = DeterminePhred(read1,args.out,"pre",logger)
+
+			#calling bowtie2
+			BowtieAlign(extra,read1,read2,read,args.bindex,args.bref,logger,args.out,args.thread,args.rrna,phred)
+			
 	else:
 		log.info("User opted to perform analysis to detect novel transcripts, Prepping for Tophat, Cufflinks and eXpress...")	
 		libtype = ""
